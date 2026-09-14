@@ -55,26 +55,42 @@ export async function POST(request) {
 
         if (trial && trial.length > 0) {
           const t = trial[0];
-          // If deviceUUID provided, verify hardware binding
-          if (deviceUUID && t.device_uuid && t.device_uuid !== deviceUUID) {
+
+          // Auto-bind device on first login if blank
+          if (deviceUUID && !t.device_uuid) {
+            await supabase.from(table).update({ device_uuid: deviceUUID }).eq("id", t.id);
+            t.device_uuid = deviceUUID;
+          } else if (deviceUUID && t.device_uuid && t.device_uuid !== deviceUUID) {
             return NextResponse.json({
               success: false,
               valid: false,
+              message: "This account is linked to another device. Contact administrator.",
               error: "This account is linked to another device.",
               code: "DEVICE_MISMATCH",
             });
           }
+
           const endDate = new Date(t.end_date);
           const isActive = now < endDate && t.status === "Trial";
 
+          if (!isActive) {
+            return NextResponse.json({
+              success: false,
+              valid: false,
+              message: "Your 1-Day Free Trial has expired. Please upgrade to continue.",
+              error: "Trial has expired.",
+              code: "EXPIRED",
+            });
+          }
+
           return NextResponse.json({
             success: true,
-            valid: isActive,
+            valid: true,
             plan: "1-Day Free",
-            status: isActive ? "Active" : "Expired",
+            status: "Active",
             endDate: t.end_date,
             table: table,
-            message: isActive ? "Trial is active" : "Trial has expired. Please upgrade to Pro.",
+            message: "Trial is active",
           });
         }
       } catch (_) {
@@ -94,25 +110,53 @@ export async function POST(request) {
 
         if (sub && sub.length > 0) {
           const s = sub[0];
-          if (deviceUUID && s.device_uuid && s.device_uuid !== deviceUUID) {
+
+          // Check if payment is still pending
+          if (s.status === "Pending") {
             return NextResponse.json({
               success: false,
               valid: false,
+              message: "Subscription pending payment. Please complete payment using the link sent to your email.",
+              error: "Subscription pending payment.",
+              code: "PENDING_PAYMENT",
+            });
+          }
+
+          // Auto-bind device on first login if blank
+          if (deviceUUID && !s.device_uuid) {
+            await supabase.from(table).update({ device_uuid: deviceUUID }).eq("id", s.id);
+            s.device_uuid = deviceUUID;
+          } else if (deviceUUID && s.device_uuid && s.device_uuid !== deviceUUID) {
+            return NextResponse.json({
+              success: false,
+              valid: false,
+              message: "This account is linked to another device. Contact administrator.",
               error: "This account is linked to another device.",
               code: "DEVICE_MISMATCH",
             });
           }
+
           const endDate = s.end_date ? new Date(s.end_date) : null;
           const isActive = s.status === "Paid" && endDate && now < endDate;
 
+          if (!isActive) {
+            return NextResponse.json({
+              success: false,
+              valid: false,
+              message: "Your subscription has expired. Please renew your plan to continue.",
+              error: "Subscription expired.",
+              code: "EXPIRED",
+            });
+          }
+
           return NextResponse.json({
             success: true,
-            valid: isActive,
+            valid: true,
             plan: s.plan_type,
-            status: isActive ? "Active" : s.status,
+            status: "Active",
             endDate: s.end_date,
             table: table,
-            message: isActive ? "Subscription is active" : "Subscription is " + s.status,
+            message: "Subscription is active",
           });
         }
       } catch (_) {
@@ -123,13 +167,14 @@ export async function POST(request) {
     return NextResponse.json({
       success: false,
       valid: false,
-      error: "Invalid credentials or device",
+      message: "Invalid User ID or Password",
+      error: "Invalid User ID or Password",
       code: "NOT_FOUND",
     });
   } catch (error) {
     console.error("Verify error:", error);
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: error.message, message: error.message },
       { status: 500 }
     );
   }
