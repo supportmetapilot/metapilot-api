@@ -39,18 +39,18 @@ export async function POST(request) {
 
     const now = new Date();
 
-    // Determine candidate tables based on app_type (prioritize the specific app's tables)
-    const trialTables = isGo ? ["go_trials", "trials"] : ["pro_trials", "trials"];
-    const subTables = isGo ? ["go_subscriptions", "subscriptions"] : ["pro_subscriptions", "subscriptions"];
+    // Determine candidate tables based on app_type (prioritize the specific app's tables, but check both)
+    const trialTables = isGo ? ["go_trials", "pro_trials", "trials"] : ["pro_trials", "go_trials", "trials"];
+    const subTables = isGo ? ["go_subscriptions", "pro_subscriptions", "subscriptions"] : ["pro_subscriptions", "go_subscriptions", "subscriptions"];
 
-function normalizePassword(p) {
-  return (p || "")
-    .trim()
-    .toUpperCase()
-    .replace(/O/g, "0")
-    .replace(/S/g, "5")
-    .replace(/[IL]/g, "1");
-}
+    function normalizePassword(p) {
+      return (p || "")
+        .trim()
+        .toUpperCase()
+        .replace(/O/g, "0")
+        .replace(/S/g, "5")
+        .replace(/[IL]/g, "1");
+    }
 
     // 1. Check Trials
     for (const table of trialTables) {
@@ -69,18 +69,27 @@ function normalizePassword(p) {
           });
 
           if (t) {
-            // Auto-bind device on first login if blank
-            if (deviceUUID && !t.device_uuid) {
-              await supabase.from(table).update({ device_uuid: deviceUUID }).eq("id", t.id);
-              t.device_uuid = deviceUUID;
-            } else if (deviceUUID && t.device_uuid && t.device_uuid !== deviceUUID) {
-              return NextResponse.json({
-                success: false,
-                valid: false,
-                message: "This account is linked to another device. Contact administrator.",
-                error: "This account is linked to another device.",
-                code: "DEVICE_MISMATCH",
-              });
+            // Auto-bind device on first login or allow companion app
+            if (deviceUUID) {
+              const boundDevices = (t.device_uuid || "").split(",").map(d => d.trim()).filter(Boolean);
+              if (boundDevices.length === 0) {
+                await supabase.from(table).update({ device_uuid: deviceUUID }).eq("id", t.id);
+                t.device_uuid = deviceUUID;
+              } else if (!boundDevices.includes(deviceUUID)) {
+                if (boundDevices.length < 2) {
+                  const updated = `${t.device_uuid},${deviceUUID}`;
+                  await supabase.from(table).update({ device_uuid: updated }).eq("id", t.id);
+                  t.device_uuid = updated;
+                } else {
+                  return NextResponse.json({
+                    success: false,
+                    valid: false,
+                    message: "This account is linked to another device. Contact administrator.",
+                    error: "This account is linked to another device.",
+                    code: "DEVICE_MISMATCH",
+                  });
+                }
+              }
             }
 
             const endDate = new Date(t.end_date);
@@ -140,18 +149,27 @@ function normalizePassword(p) {
               });
             }
 
-            // Auto-bind device on first login if blank
-            if (deviceUUID && !s.device_uuid) {
-              await supabase.from(table).update({ device_uuid: deviceUUID }).eq("id", s.id);
-              s.device_uuid = deviceUUID;
-            } else if (deviceUUID && s.device_uuid && s.device_uuid !== deviceUUID) {
-              return NextResponse.json({
-                success: false,
-                valid: false,
-                message: "This account is linked to another device. Contact administrator.",
-                error: "This account is linked to another device.",
-                code: "DEVICE_MISMATCH",
-              });
+            // Auto-bind device on first login or allow companion app (Go + Pro on same PC)
+            if (deviceUUID) {
+              const boundDevices = (s.device_uuid || "").split(",").map(d => d.trim()).filter(Boolean);
+              if (boundDevices.length === 0) {
+                await supabase.from(table).update({ device_uuid: deviceUUID }).eq("id", s.id);
+                s.device_uuid = deviceUUID;
+              } else if (!boundDevices.includes(deviceUUID)) {
+                if (boundDevices.length < 2) {
+                  const updated = `${s.device_uuid},${deviceUUID}`;
+                  await supabase.from(table).update({ device_uuid: updated }).eq("id", s.id);
+                  s.device_uuid = updated;
+                } else {
+                  return NextResponse.json({
+                    success: false,
+                    valid: false,
+                    message: "This account is linked to another device. Contact administrator.",
+                    error: "This account is linked to another device.",
+                    code: "DEVICE_MISMATCH",
+                  });
+                }
+              }
             }
 
             const endDate = s.end_date ? new Date(s.end_date) : null;
