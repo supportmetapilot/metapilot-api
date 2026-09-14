@@ -4,9 +4,13 @@ import { supabase } from "@/lib/supabase";
 /**
  * POST /api/verify
  * Verify user login credentials + check subscription validity
- * Replaces GAS login verification
+ * 
+ * Supports dedicated tables:
+ * - pro_trials & pro_subscriptions
+ * - go_trials & go_subscriptions
+ * - Fallback to trials & subscriptions
  *
- * Body: { userId, password, deviceUUID }
+ * Body: { userId, password, deviceUUID, app_type }
  */
 export async function POST(request) {
   try {
@@ -23,6 +27,8 @@ export async function POST(request) {
     const userId = (body.userId || body.userid || body.user_id || "").trim();
     const password = (body.password || body.key || "").trim();
     const deviceUUID = (body.deviceUUID || body.deviceId || body.device_uuid || "").trim();
+    const rawApp = (body.app_type || body.appType || body.app || "").toLowerCase();
+    const isGo = rawApp.includes("go");
 
     if (!userId || !password) {
       return NextResponse.json(
@@ -33,67 +39,85 @@ export async function POST(request) {
 
     const now = new Date();
 
-    // Check trials first (case-insensitive userId)
-    const { data: trial } = await supabase
-      .from("trials")
-      .select("*")
-      .ilike("user_id", userId)
-      .eq("password", password)
-      .limit(1);
+    // Determine candidate tables based on app_type (prioritize the specific app's tables)
+    const trialTables = isGo ? ["go_trials", "trials"] : ["pro_trials", "trials"];
+    const subTables = isGo ? ["go_subscriptions", "subscriptions"] : ["pro_subscriptions", "subscriptions"];
 
-    if (trial && trial.length > 0) {
-      const t = trial[0];
-      // If deviceUUID provided, verify hardware binding
-      if (deviceUUID && t.device_uuid && t.device_uuid !== deviceUUID) {
-        return NextResponse.json({
-          success: false,
-          valid: false,
-          error: "This account is linked to another device.",
-          code: "DEVICE_MISMATCH",
-        });
+    // 1. Check Trials
+    for (const table of trialTables) {
+      try {
+        const { data: trial } = await supabase
+          .from(table)
+          .select("*")
+          .ilike("user_id", userId)
+          .eq("password", password)
+          .limit(1);
+
+        if (trial && trial.length > 0) {
+          const t = trial[0];
+          // If deviceUUID provided, verify hardware binding
+          if (deviceUUID && t.device_uuid && t.device_uuid !== deviceUUID) {
+            return NextResponse.json({
+              success: false,
+              valid: false,
+              error: "This account is linked to another device.",
+              code: "DEVICE_MISMATCH",
+            });
+          }
+          const endDate = new Date(t.end_date);
+          const isActive = now < endDate && t.status === "Trial";
+
+          return NextResponse.json({
+            success: true,
+            valid: isActive,
+            plan: "1-Day Free",
+            status: isActive ? "Active" : "Expired",
+            endDate: t.end_date,
+            table: table,
+            message: isActive ? "Trial is active" : "Trial has expired. Please upgrade to Pro.",
+          });
+        }
+      } catch (_) {
+        // Table might not exist yet, continue to fallback
       }
-      const endDate = new Date(t.end_date);
-      const isActive = now < endDate && t.status === "Trial";
-
-      return NextResponse.json({
-        success: true,
-        valid: isActive,
-        plan: "1-Day Free",
-        status: isActive ? "Active" : "Expired",
-        endDate: t.end_date,
-        message: isActive ? "Trial is active" : "Trial has expired. Please upgrade to Pro.",
-      });
     }
 
-    // Check subscriptions
-    const { data: sub } = await supabase
-      .from("subscriptions")
-      .select("*")
-      .ilike("user_id", userId)
-      .eq("password", password)
-      .limit(1);
+    // 2. Check Subscriptions
+    for (const table of subTables) {
+      try {
+        const { data: sub } = await supabase
+          .from(table)
+          .select("*")
+          .ilike("user_id", userId)
+          .eq("password", password)
+          .limit(1);
 
-    if (sub && sub.length > 0) {
-      const s = sub[0];
-      if (deviceUUID && s.device_uuid && s.device_uuid !== deviceUUID) {
-        return NextResponse.json({
-          success: false,
-          valid: false,
-          error: "This account is linked to another device.",
-          code: "DEVICE_MISMATCH",
-        });
+        if (sub && sub.length > 0) {
+          const s = sub[0];
+          if (deviceUUID && s.device_uuid && s.device_uuid !== deviceUUID) {
+            return NextResponse.json({
+              success: false,
+              valid: false,
+              error: "This account is linked to another device.",
+              code: "DEVICE_MISMATCH",
+            });
+          }
+          const endDate = s.end_date ? new Date(s.end_date) : null;
+          const isActive = s.status === "Paid" && endDate && now < endDate;
+
+          return NextResponse.json({
+            success: true,
+            valid: isActive,
+            plan: s.plan_type,
+            status: isActive ? "Active" : s.status,
+            endDate: s.end_date,
+            table: table,
+            message: isActive ? "Subscription is active" : "Subscription is " + s.status,
+          });
+        }
+      } catch (_) {
+        // Table might not exist yet, continue to fallback
       }
-      const endDate = s.end_date ? new Date(s.end_date) : null;
-      const isActive = s.status === "Paid" && endDate && now < endDate;
-
-      return NextResponse.json({
-        success: true,
-        valid: isActive,
-        plan: s.plan_type,
-        status: isActive ? "Active" : s.status,
-        endDate: s.end_date,
-        message: isActive ? "Subscription is active" : "Subscription is " + s.status,
-      });
     }
 
     return NextResponse.json({
