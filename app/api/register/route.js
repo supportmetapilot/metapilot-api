@@ -176,8 +176,14 @@ export async function POST(request) {
           planType: planType,
           finalPrice: finalPrice,
         });
-        await sendEmail(email, emailTemplate.subject, emailTemplate.htmlBody, name);
-        console.log(`[Email] Subscription received email sent to ${email} for ${appDisplayName}`);
+        await sendEmail(
+          email, 
+          emailTemplate.subject, 
+          emailTemplate.htmlBody, 
+          name, 
+          [{ email: "support.metapilot@gmail.com", name: "MetaPilot Admin" }]
+        );
+        console.log(`[Email] Subscription received email sent to ${email} (CC: support.metapilot@gmail.com) for ${appDisplayName}`);
       } catch (mailErr) {
         console.error(`[Email Error] Failed to send subscription email:`, mailErr.message);
       }
