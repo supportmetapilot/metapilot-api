@@ -10,29 +10,48 @@ import { supabase } from "@/lib/supabase";
  */
 export async function POST(request) {
   try {
-    const body = await request.json();
-    const { userId, password, deviceUUID } = body;
+    let body;
+    const contentType = request.headers.get("content-type") || "";
+    if (contentType.includes("application/x-www-form-urlencoded")) {
+      const text = await request.text();
+      const params = new URLSearchParams(text);
+      body = Object.fromEntries(params.entries());
+    } else {
+      body = await request.json();
+    }
 
-    if (!userId || !password || !deviceUUID) {
+    const userId = (body.userId || body.userid || body.user_id || "").trim();
+    const password = (body.password || body.key || "").trim();
+    const deviceUUID = (body.deviceUUID || body.deviceId || body.device_uuid || "").trim();
+
+    if (!userId || !password) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields" },
+        { success: false, error: "Missing required fields: userId, password" },
         { status: 400 }
       );
     }
 
     const now = new Date();
 
-    // Check trials first
+    // Check trials first (case-insensitive userId)
     const { data: trial } = await supabase
       .from("trials")
       .select("*")
-      .eq("user_id", userId)
+      .ilike("user_id", userId)
       .eq("password", password)
-      .eq("device_uuid", deviceUUID)
       .limit(1);
 
     if (trial && trial.length > 0) {
       const t = trial[0];
+      // If deviceUUID provided, verify hardware binding
+      if (deviceUUID && t.device_uuid && t.device_uuid !== deviceUUID) {
+        return NextResponse.json({
+          success: false,
+          valid: false,
+          error: "This account is linked to another device.",
+          code: "DEVICE_MISMATCH",
+        });
+      }
       const endDate = new Date(t.end_date);
       const isActive = now < endDate && t.status === "Trial";
 
@@ -50,13 +69,20 @@ export async function POST(request) {
     const { data: sub } = await supabase
       .from("subscriptions")
       .select("*")
-      .eq("user_id", userId)
+      .ilike("user_id", userId)
       .eq("password", password)
-      .eq("device_uuid", deviceUUID)
       .limit(1);
 
     if (sub && sub.length > 0) {
       const s = sub[0];
+      if (deviceUUID && s.device_uuid && s.device_uuid !== deviceUUID) {
+        return NextResponse.json({
+          success: false,
+          valid: false,
+          error: "This account is linked to another device.",
+          code: "DEVICE_MISMATCH",
+        });
+      }
       const endDate = s.end_date ? new Date(s.end_date) : null;
       const isActive = s.status === "Paid" && endDate && now < endDate;
 

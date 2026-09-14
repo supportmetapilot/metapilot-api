@@ -9,8 +9,23 @@ import { supabase } from "@/lib/supabase";
  */
 export async function POST(request) {
   try {
-    const body = await request.json();
-    const { name, email, mobile, jobRole, planType, deviceUUID } = body;
+    let body;
+    const contentType = request.headers.get("content-type") || "";
+    if (contentType.includes("application/x-www-form-urlencoded")) {
+      const text = await request.text();
+      const params = new URLSearchParams(text);
+      body = Object.fromEntries(params.entries());
+    } else {
+      body = await request.json();
+    }
+
+    const name = body.name || body.fullName || body.full_name;
+    const email = body.email;
+    const mobile = body.mobile || body.phone || "";
+    const jobRole = body.jobRole || body.job_role || body.role || "";
+    const rawPlan = body.planType || body.plan || body.subType || "1-Day Free";
+    const planType = (rawPlan.toLowerCase().includes("trial") || rawPlan.toLowerCase().includes("free")) ? "1-Day Free" : "MetaPilot Pro";
+    const deviceUUID = body.deviceUUID || body.deviceId || body.device_uuid || "";
 
     if (!name || !email || !deviceUUID) {
       return NextResponse.json(
@@ -23,7 +38,7 @@ export async function POST(request) {
     const userId = name.substring(0, 4).toUpperCase();
     const password = deviceUUID.substring(0, 4);
 
-    if (planType === "1-Day Free" || planType === "trial") {
+    if (planType === "1-Day Free") {
       // Check if HWID already claimed trial
       const { data: existing } = await supabase
         .from("trials")
