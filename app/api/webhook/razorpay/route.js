@@ -105,7 +105,7 @@ export async function POST(request) {
     // Generate credentials
     const cleanPrefix = name.replace(/[^a-zA-Z]/g, "").substring(0, 4).toUpperCase() || "USER";
     const userId = cleanPrefix.padEnd(4, "X") + Math.floor(1000 + Math.random() * 9000);
-    const password = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const password = Math.floor(100000 + Math.random() * 900000).toString();
 
     const startDate = new Date();
     const endDate = calculateEndDate(startDate, plan);
