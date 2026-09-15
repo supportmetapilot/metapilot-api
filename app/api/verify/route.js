@@ -39,9 +39,13 @@ export async function POST(request) {
 
     const now = new Date();
 
-    // Determine candidate tables based on app_type (prioritize the specific app's tables, but check both)
-    const trialTables = isGo ? ["go_trials", "pro_trials", "trials"] : ["pro_trials", "go_trials", "trials"];
-    const subTables = isGo ? ["go_subscriptions", "pro_subscriptions", "subscriptions"] : ["pro_subscriptions", "go_subscriptions", "subscriptions"];
+    // Strict table segregation: Go credentials ONLY work in Go tables, Pro credentials ONLY in Pro tables
+    const targetTrialTables = isGo ? ["go_trials"] : ["pro_trials"];
+    const targetSubTables = isGo ? ["go_subscriptions"] : ["pro_subscriptions"];
+
+    // Other tier's tables to detect and reject cross-app login attempts with a helpful message
+    const otherTrialTables = isGo ? ["pro_trials"] : ["go_trials"];
+    const otherSubTables = isGo ? ["pro_subscriptions"] : ["go_subscriptions"];
 
     function normalizePassword(p) {
       return (p || "")
@@ -52,8 +56,8 @@ export async function POST(request) {
         .replace(/[IL]/g, "1");
     }
 
-    // 1. Check Trials
-    for (const table of trialTables) {
+    // 1. Check Authorized Trials for this app
+    for (const table of targetTrialTables) {
       try {
         const { data: candidates } = await supabase
           .from(table)
@@ -117,12 +121,12 @@ export async function POST(request) {
           }
         }
       } catch (_) {
-        // Table might not exist yet, continue to fallback
+        // Continue
       }
     }
 
-    // 2. Check Subscriptions
-    for (const table of subTables) {
+    // 2. Check Authorized Subscriptions for this app
+    for (const table of targetSubTables) {
       try {
         const { data: candidates } = await supabase
           .from(table)
@@ -149,7 +153,7 @@ export async function POST(request) {
               });
             }
 
-            // Auto-bind device on first login or allow companion app (Go + Pro on same PC)
+            // Auto-bind device on first login or allow companion app
             if (deviceUUID) {
               const boundDevices = (s.device_uuid || "").split(",").map(d => d.trim()).filter(Boolean);
               if (boundDevices.length === 0) {
@@ -197,7 +201,43 @@ export async function POST(request) {
           }
         }
       } catch (_) {
-        // Table might not exist yet, continue to fallback
+        // Continue
+      }
+    }
+
+    // 3. Check if user credentials belong to the OTHER application tier (Strict Rejection)
+    const crossCheckTables = [...otherTrialTables, ...otherSubTables];
+    for (const table of crossCheckTables) {
+      try {
+        const { data: crossCandidates } = await supabase
+          .from(table)
+          .select("*")
+          .ilike("user_id", userId);
+
+        if (crossCandidates && crossCandidates.length > 0) {
+          const crossMatch = crossCandidates.find(item => {
+            const p1 = (item.password || "").trim();
+            const p2 = password.trim();
+            if (p1.toLowerCase() === p2.toLowerCase()) return true;
+            return normalizePassword(p1) === normalizePassword(p2);
+          });
+
+          if (crossMatch) {
+            const crossMsg = isGo
+              ? "This account has a MetaPilot Pro membership. Please use the MetaPilot Pro app to log in."
+              : "This account has a MetaPilot Go membership. Please use the MetaPilot Go app, or purchase a MetaPilot Pro membership.";
+
+            return NextResponse.json({
+              success: false,
+              valid: false,
+              message: crossMsg,
+              error: crossMsg,
+              code: "WRONG_APP_TIER",
+            });
+          }
+        }
+      } catch (_) {
+        // Continue
       }
     }
 

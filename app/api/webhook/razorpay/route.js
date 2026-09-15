@@ -65,10 +65,10 @@ export async function POST(request) {
       return NextResponse.json({ success: true, message: "No email context in payment" });
     }
 
-    // Search tables in order based on appTypeHint
+    // Search table strictly based on appTypeHint to prevent cross-activation
     const tablesToSearch = appTypeHint.includes("go")
-      ? ["go_subscriptions", "pro_subscriptions", "subscriptions"]
-      : ["pro_subscriptions", "go_subscriptions", "subscriptions"];
+      ? ["go_subscriptions"]
+      : ["pro_subscriptions"];
 
     let targetTable = null;
     let pendingRecord = null;
