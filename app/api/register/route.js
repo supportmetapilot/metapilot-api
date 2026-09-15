@@ -184,6 +184,28 @@ export async function POST(request) {
       const basePrice = getStandardPrice(rawPlan, isGo);
       let sellingPrice = Number(body.sellingPrice || body.amountPaid || body.finalPrice) || basePrice;
 
+      // Live Supabase coupon check: Always enforce live discount percentage from DB
+      if (rawCoupon) {
+        try {
+          const { data: dbCoupon } = await supabase
+            .from("coupons")
+            .select("discount_percent, is_active")
+            .ilike("code", rawCoupon)
+            .neq("is_active", false)
+            .limit(1);
+
+          if (dbCoupon && dbCoupon.length > 0) {
+            const discountPct = Number(dbCoupon[0].discount_percent);
+            if (discountPct > 0 && discountPct <= 100) {
+              sellingPrice = Math.round(basePrice * (1 - discountPct / 100));
+              console.log(`[Register] Applied live coupon ${rawCoupon}: ${discountPct}% off. Base: ₹${basePrice}, Final: ₹${sellingPrice}`);
+            }
+          }
+        } catch (couponErr) {
+          console.warn("[Register] DB coupon re-check failed:", couponErr.message);
+        }
+      }
+
       // Generate Razorpay Payment Link
       let paymentLink = null;
       try {
