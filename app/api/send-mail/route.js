@@ -3,31 +3,87 @@ import { supabase } from "@/lib/supabase";
 import { sendEmail } from "@/lib/brevo";
 import { getMailTemplate } from "@/lib/email-templates";
 
+export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/send-mail
+ * Admin query or quick 1-click trigger
+ */
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const action = searchParams.get("action") || "stats";
+    const key = searchParams.get("key");
+
+    if (action === "stats") {
+      const stats = await getLeadStats();
+      return NextResponse.json({ success: true, stats });
+    }
+
+    if (action === "campaign") {
+      // Simple security check for GET trigger
+      if (key !== "metapilot2026" && key !== process.env.CRON_SECRET) {
+        return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      }
+
+      const mailSlot = parseInt(searchParams.get("slot") || "1", 10);
+      const limit = parseInt(searchParams.get("limit") || "50", 10);
+
+      const result = await runCampaignBatch(mailSlot, limit);
+      return NextResponse.json(result);
+    }
+
+    return NextResponse.json({ success: false, error: "Unknown action" }, { status: 400 });
+  } catch (error) {
+    console.error("GET send-mail error:", error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
 /**
  * POST /api/send-mail
- * Send marketing emails to leads from Supabase
- * Replaces GAS sendMail + campaign automation
- *
- * Body: {
- *   action: "campaign" | "single",
- *   leadId: number (for single),
- *   templateCode: "A" | "B" | "C",
- *   limit: number (for campaign, default 50),
- *   mailSlot: 1 | 2 | 3 (which mail slot to use)
- * }
+ * Main email sender supporting campaign batches, single leads, and test emails
  */
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { action, leadId, templateCode, limit = 50, mailSlot = 1 } = body;
+    const { action, leadId, templateCode = "A", limit = 50, mailSlot = 1, email, fullName, jobRole, key } = body;
 
+    // Optional PIN verification for admin actions
+    if (key && key !== "metapilot2026" && key !== process.env.CRON_SECRET) {
+      return NextResponse.json({ success: false, error: "Invalid Admin PIN" }, { status: 401 });
+    }
+
+    // 1. STATS
+    if (action === "stats") {
+      const stats = await getLeadStats();
+      return NextResponse.json({ success: true, stats });
+    }
+
+    // 2. TEST EMAIL
+    if (action === "test") {
+      const targetEmail = email || "support@metapilot.in";
+      const targetName = fullName || "Test User";
+      const targetRole = jobRole || "Software Engineer";
+
+      const template = getMailTemplate(templateCode, {
+        fullName: targetName,
+        jobRole: targetRole,
+      });
+
+      await sendEmail(targetEmail, `[TEST - Template ${templateCode}] ${template.subject}`, template.htmlBody, targetName);
+
+      return NextResponse.json({
+        success: true,
+        message: `Test email (${templateCode}) successfully sent to ${targetEmail}`,
+        subject: template.subject,
+      });
+    }
+
+    // 3. SINGLE LEAD
     if (action === "single") {
-      // Send to a single lead
-      if (!leadId || !templateCode) {
-        return NextResponse.json(
-          { success: false, error: "Missing leadId or templateCode" },
-          { status: 400 }
-        );
+      if (!leadId) {
+        return NextResponse.json({ success: false, error: "Missing leadId" }, { status: 400 });
       }
 
       const { data: lead, error } = await supabase
@@ -37,53 +93,17 @@ export async function POST(request) {
         .single();
 
       if (error || !lead) {
-        return NextResponse.json(
-          { success: false, error: "Lead not found" },
-          { status: 404 }
-        );
+        return NextResponse.json({ success: false, error: "Lead not found" }, { status: 404 });
       }
 
       const result = await sendMailToLead(lead, templateCode, mailSlot);
       return NextResponse.json({ success: true, result });
+    }
 
-    } else if (action === "campaign") {
-      // Batch send to unsent leads
-      const statusField = `mail_${mailSlot}_status`;
-
-      const { data: leads, error } = await supabase
-        .from("leads")
-        .select("*")
-        .is(statusField, null)
-        .not("email", "is", null)
-        .order("id", { ascending: true })
-        .limit(limit);
-
-      if (error) throw error;
-      if (!leads || leads.length === 0) {
-        return NextResponse.json({ success: true, message: "No pending leads", sent: 0 });
-      }
-
-      const templates = ["A", "B", "C"];
-      const results = [];
-
-      for (let i = 0; i < leads.length; i++) {
-        const lead = leads[i];
-        const template = templates[i % 3]; // Round-robin A→B→C
-
-        try {
-          await sendMailToLead(lead, template, mailSlot);
-          results.push({ id: lead.id, email: lead.email, status: "sent" });
-        } catch (err) {
-          results.push({ id: lead.id, email: lead.email, status: "error", error: err.message });
-        }
-
-        // 2-second delay between sends
-        if (i < leads.length - 1) {
-          await new Promise((r) => setTimeout(r, 2000));
-        }
-      }
-
-      return NextResponse.json({ success: true, sent: results.filter(r => r.status === "sent").length, total: leads.length, results });
+    // 4. CAMPAIGN BATCH
+    if (action === "campaign") {
+      const result = await runCampaignBatch(mailSlot, limit);
+      return NextResponse.json(result);
     }
 
     return NextResponse.json({ success: false, error: "Invalid action" }, { status: 400 });
@@ -93,6 +113,133 @@ export async function POST(request) {
   }
 }
 
+/**
+ * Fetch database lead stats for the Admin Dashboard
+ */
+async function getLeadStats() {
+  const { count: totalLeads } = await supabase
+    .from("leads")
+    .select("*", { count: "exact", head: true });
+
+  const { count: mail1Sent } = await supabase
+    .from("leads")
+    .select("*", { count: "exact", head: true })
+    .not("mail_1_status", "is", null);
+
+  const { count: mail1Pending } = await supabase
+    .from("leads")
+    .select("*", { count: "exact", head: true })
+    .is("mail_1_status", null)
+    .not("email", "is", null);
+
+  const { count: mail2Sent } = await supabase
+    .from("leads")
+    .select("*", { count: "exact", head: true })
+    .not("mail_2_status", "is", null);
+
+  const { count: mail2Pending } = await supabase
+    .from("leads")
+    .select("*", { count: "exact", head: true })
+    .not("mail_1_status", "is", null)
+    .is("mail_2_status", null);
+
+  const { count: mail3Sent } = await supabase
+    .from("leads")
+    .select("*", { count: "exact", head: true })
+    .not("mail_3_status", "is", null);
+
+  const { count: mail3Pending } = await supabase
+    .from("leads")
+    .select("*", { count: "exact", head: true })
+    .not("mail_2_status", "is", null)
+    .is("mail_3_status", null);
+
+  return {
+    totalLeads: totalLeads || 0,
+    mail1Sent: mail1Sent || 0,
+    mail1Pending: mail1Pending || 0,
+    mail2Sent: mail2Sent || 0,
+    mail2Pending: mail2Pending || 0,
+    mail3Sent: mail3Sent || 0,
+    mail3Pending: mail3Pending || 0,
+  };
+}
+
+/**
+ * Execute batch campaign send
+ */
+async function runCampaignBatch(mailSlot, limit) {
+  const statusField = `mail_${mailSlot}_status`;
+
+  let query = supabase
+    .from("leads")
+    .select("*")
+    .is(statusField, null)
+    .not("email", "is", null)
+    .order("id", { ascending: true })
+    .limit(limit);
+
+  // For slot 2, slot 1 must have been sent
+  if (mailSlot === 2) {
+    query = query.not("mail_1_status", "is", null);
+  }
+  // For slot 3, slot 2 must have been sent
+  if (mailSlot === 3) {
+    query = query.not("mail_2_status", "is", null);
+  }
+
+  const { data: leads, error } = await query;
+
+  if (error) throw error;
+  if (!leads || leads.length === 0) {
+    return { success: true, message: `No pending leads for Mail ${mailSlot}`, sent: 0, total: 0, results: [] };
+  }
+
+  const templates = ["A", "B", "C"];
+  const results = [];
+
+  for (let i = 0; i < leads.length; i++) {
+    const lead = leads[i];
+    // Rotate template based on previous or index
+    let template;
+    if (mailSlot === 1) {
+      template = templates[i % 3];
+    } else if (mailSlot === 2) {
+      const prev = lead.mail_1_template || "A";
+      template = prev === "A" ? "B" : prev === "B" ? "C" : "A";
+    } else {
+      const prev = lead.mail_2_template || "B";
+      template = prev === "B" ? "C" : prev === "C" ? "A" : "B";
+    }
+
+    try {
+      await sendMailToLead(lead, template, mailSlot);
+      results.push({ id: lead.id, email: lead.email, name: lead.full_name, template, status: "sent" });
+    } catch (err) {
+      results.push({ id: lead.id, email: lead.email, name: lead.full_name, template, status: "error", error: err.message });
+      await supabase.from("leads").update({
+        error_log: `[${new Date().toISOString()}] Slot ${mailSlot} error: ${err.message}`,
+      }).eq("id", lead.id);
+    }
+
+    // 2-second rate limit between emails
+    if (i < leads.length - 1) {
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+
+  return {
+    success: true,
+    mailSlot,
+    sent: results.filter((r) => r.status === "sent").length,
+    total: leads.length,
+    results,
+  };
+}
+
+/**
+ * Send email to single lead and update Supabase
+ */
 async function sendMailToLead(lead, templateCode, mailSlot) {
   const template = getMailTemplate(templateCode, {
     fullName: lead.full_name,
