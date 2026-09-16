@@ -47,7 +47,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { action, leadId, templateCode = "A", limit = 50, mailSlot = 1, email, fullName, jobRole, key } = body;
+    const { action, leadId, templateCode = "D", limit = 50, mailSlot = 1, email, fullName, jobRole, key, templateFamily = "human" } = body;
 
     // Optional PIN verification for admin actions
     if (key && key !== "metapilot2026" && key !== process.env.CRON_SECRET) {
@@ -102,7 +102,7 @@ export async function POST(request) {
 
     // 4. CAMPAIGN BATCH
     if (action === "campaign") {
-      const result = await runCampaignBatch(mailSlot, limit);
+      const result = await runCampaignBatch(mailSlot, limit, templateFamily);
       return NextResponse.json(result);
     }
 
@@ -168,7 +168,7 @@ async function getLeadStats() {
 /**
  * Execute batch campaign send
  */
-async function runCampaignBatch(mailSlot, limit) {
+async function runCampaignBatch(mailSlot, limit, templateFamily = "human") {
   const statusField = `mail_${mailSlot}_status`;
 
   let query = supabase
@@ -195,21 +195,22 @@ async function runCampaignBatch(mailSlot, limit) {
     return { success: true, message: `No pending leads for Mail ${mailSlot}`, sent: 0, total: 0, results: [] };
   }
 
-  const templates = ["A", "B", "C"];
   const results = [];
 
   for (let i = 0; i < leads.length; i++) {
     const lead = leads[i];
-    // Rotate template based on previous or index
     let template;
-    if (mailSlot === 1) {
-      template = templates[i % 3];
-    } else if (mailSlot === 2) {
-      const prev = lead.mail_1_template || "A";
-      template = prev === "A" ? "B" : prev === "B" ? "C" : "A";
+
+    if (templateFamily === "card") {
+      // Smart PLM Card Family (A, B, C)
+      if (mailSlot === 1) template = "A";
+      else if (mailSlot === 2) template = "B";
+      else template = "C";
     } else {
-      const prev = lead.mail_2_template || "B";
-      template = prev === "B" ? "C" : prev === "C" ? "A" : "B";
+      // Human 1-on-1 Personal Family (D, E, F) - Lands in Primary Inbox
+      if (mailSlot === 1) template = "D";
+      else if (mailSlot === 2) template = "E";
+      else template = "F";
     }
 
     try {

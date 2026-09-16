@@ -11,6 +11,7 @@ export default function AdminPage() {
   // Campaign batch state
   const [mailSlot, setMailSlot] = useState(1);
   const [batchLimit, setBatchLimit] = useState(50);
+  const [templateFamily, setTemplateFamily] = useState("human");
   const [sendingBatch, setSendingBatch] = useState(false);
   const [batchResult, setBatchResult] = useState(null);
 
@@ -18,7 +19,7 @@ export default function AdminPage() {
   const [testEmail, setTestEmail] = useState("");
   const [testName, setTestName] = useState("Hrushikesh More");
   const [testRole, setTestRole] = useState("Senior Software Engineer");
-  const [testTemplate, setTestTemplate] = useState("A");
+  const [testTemplate, setTestTemplate] = useState("D");
   const [sendingTest, setSendingTest] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
@@ -80,6 +81,7 @@ export default function AdminPage() {
           action: "campaign",
           mailSlot: parseInt(mailSlot, 10),
           limit: parseInt(batchLimit, 10),
+          templateFamily,
           key: "metapilot2026",
         }),
       });
@@ -232,6 +234,18 @@ export default function AdminPage() {
             </div>
 
             <div>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Email Style (Inbox Target):</label>
+              <select
+                value={templateFamily}
+                onChange={(e) => setTemplateFamily(e.target.value)}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 14, background: "#f8fafc" }}
+              >
+                <option value="human">🎯 Human 1-on-1 (D, E, F - Primary Inbox)</option>
+                <option value="card">🎨 Smart PLM Card (A, B, C - Visual Card)</option>
+              </select>
+            </div>
+
+            <div>
               <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Batch Size (Limit):</label>
               <select
                 value={batchLimit}
@@ -332,9 +346,16 @@ export default function AdminPage() {
                   onChange={(e) => setTestTemplate(e.target.value)}
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, background: "#fff", boxSizing: "border-box" }}
                 >
-                  <option value="A">Template A (Overcoming Interview Pressure)</option>
-                  <option value="B">Template B (Career Briefing &amp; Real-Time AI)</option>
-                  <option value="C">Template C (Final Preparation Alert)</option>
+                  <optgroup label="🎯 Human 1-on-1 (Best for Primary Inbox)">
+                    <option value="D">Template D (1-on-1 Initial Outreach)</option>
+                    <option value="E">Template E (1-on-1 Follow-up)</option>
+                    <option value="F">Template F (1-on-1 Final Call)</option>
+                  </optgroup>
+                  <optgroup label="🎨 Smart PLM Academy Card Design">
+                    <option value="A">Template A (Card - Overcoming Pressure)</option>
+                    <option value="B">Template B (Card - Career Briefing)</option>
+                    <option value="C">Template C (Card - Final Briefing)</option>
+                  </optgroup>
                 </select>
               </div>
             </div>
