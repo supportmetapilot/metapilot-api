@@ -71,7 +71,7 @@ export async function POST(request) {
         jobRole: targetRole,
       });
 
-      await sendEmail(targetEmail, `[TEST - Template ${templateCode}] ${template.subject}`, template.htmlBody, targetName);
+      await sendEmail(targetEmail, template.subject, template.htmlBody, targetName);
 
       return NextResponse.json({
         success: true,
