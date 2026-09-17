@@ -17,7 +17,7 @@ We recently built a silent AI co-pilot called MetaPilot specifically to help {{j
 * 100% Invisible: Designed to remain completely undetectable during screen sharing on Google Meet, Zoom, and MS Teams.
 
 Career Guidance & Mentor Support:
-If you are facing challenges like low interview call frequency, career gaps/transitions, domain switching, or interview prep confusion — our senior mentors also offer 1-on-1 personalized guidance (included exclusively for members on our Pro Plan).
+Facing challenges like low interview call frequency, career gaps/transitions, or prep confusion? Pro Plan members get direct email-based 1-on-1 mentorship — you can simply reply to this email with your current situation or resume, and our senior mentors will review and share a clear, actionable roadmap directly over email.
 
 We offer a completely free 1-day full access pass so you can test it on your laptop before any real interview:
 👉 https://metapilot.in/
@@ -44,7 +44,7 @@ To help {{jobRole}} professionals clear these rounds with confidence, we built M
 * Completely Screen-Safe: Runs privately on your desktop without showing up on Google Meet, Zoom, or Teams screen sharing.
 
 Career Guidance & Mentor Support:
-Along with the co-pilot, if you are navigating challenges like low call frequency, career gaps, domain transitions, or interview prep confusion, our senior mentors offer 1-on-1 strategic guidance (available exclusively for members on our Pro Plan).
+Struggling with interview shortlists, career transitions, or interview anxiety? As an exclusive perk for Pro Plan members, our mentors provide written profile & interview audits over email. Just reply with your queries here, and get personalized written feedback without the hassle of scheduling calls.
 
 You can test the 1-day free trial directly on your computer before your next interview:
 👉 https://metapilot.in/
@@ -71,7 +71,7 @@ We designed MetaPilot as an invisible co-pilot to give you that edge — listeni
 * 100% Invisible: Undetectable during screen sharing on all major meeting platforms.
 
 Career Guidance & Mentor Support:
-If you are experiencing low interview call frequency, career gaps/transitions, or confusion regarding interview preparation — our senior mentors provide personalized 1-on-1 guidance (included as an exclusive benefit for Pro Plan members).
+Facing challenges like low interview call frequency, career gaps/transitions, or prep confusion? As an exclusive perk for Pro Plan members, our mentors provide written profile & interview audits over email. You can simply reply to this email with your current situation or resume, and our senior mentors will review and share a clear, actionable roadmap directly over email.
 
 You can try out our 1-day free trial to test it before any upcoming rounds:
 👉 https://metapilot.in/
