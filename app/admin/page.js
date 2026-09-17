@@ -35,6 +35,27 @@ export default function AdminPage() {
   const [loadingLeads, setLoadingLeads] = useState(false);
   const [clearingLeads, setClearingLeads] = useState(false);
 
+  // Range delete state
+  const [rangeFromId, setRangeFromId] = useState("");
+  const [rangeToId, setRangeToId] = useState("");
+  const [deletingRange, setDeletingRange] = useState(false);
+
+  // Edit lead modal state
+  const [editingLead, setEditingLead] = useState(null);
+  const [editForm, setEditForm] = useState({
+    full_name: "",
+    email: "",
+    mobile: "",
+    job_role: "",
+    years_of_experience: "",
+    notice_period: "",
+    mail_1_status: "",
+    mail_2_status: "",
+    mail_3_status: "",
+  });
+  const [savingLead, setSavingLead] = useState(false);
+  const [deletingLeadId, setDeletingLeadId] = useState(null);
+
   // Test Email state
   const [testEmail, setTestEmail] = useState("");
   const [testName, setTestName] = useState("Hrushikesh More");
@@ -166,6 +187,126 @@ export default function AdminPage() {
       alert("Error: " + err.message);
     } finally {
       setClearingLeads(false);
+    }
+  };
+
+  const handleDeleteRange = async () => {
+    if (!rangeFromId || !rangeToId) {
+      alert("Please enter both From ID and To ID.");
+      return;
+    }
+    const from = parseInt(rangeFromId, 10);
+    const to = parseInt(rangeToId, 10);
+    if (isNaN(from) || isNaN(to) || from > to) {
+      alert("Please enter valid ID numbers (From ID must be less than or equal to To ID).");
+      return;
+    }
+    const confirmDelete = window.confirm(
+      `⚠️ WARNING: Are you sure you want to delete leads from ID ${from} to ${to}?\n\nThis will permanently delete those records from the database.`
+    );
+    if (!confirmDelete) return;
+
+    setDeletingRange(true);
+    try {
+      const res = await fetch(`/api/leads?fromId=${from}&toId=${to}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`✔ ${data.message || `Leads from ID ${from} to ${to} deleted successfully.`}`);
+        setRangeFromId("");
+        setRangeToId("");
+        fetchStats();
+        fetchLeads();
+      } else {
+        alert(data.error || "Failed to delete leads range.");
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setDeletingRange(false);
+    }
+  };
+
+  const handleDeleteSingle = async (leadId, leadName) => {
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete lead ID ${leadId} (${leadName || "Unnamed"}) from the database?`
+    );
+    if (!confirmDelete) return;
+
+    setDeletingLeadId(leadId);
+    try {
+      const res = await fetch(`/api/leads?id=${leadId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLeadsList((prev) => prev.filter((l) => l.id !== leadId));
+        fetchStats();
+      } else {
+        alert(data.error || "Failed to delete lead.");
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setDeletingLeadId(null);
+    }
+  };
+
+  const handleStartEdit = (lead) => {
+    setEditingLead(lead);
+    setEditForm({
+      full_name: lead.full_name || "",
+      email: lead.email || "",
+      mobile: lead.mobile || "",
+      job_role: lead.job_role || "",
+      years_of_experience: lead.years_of_experience || "",
+      notice_period: lead.notice_period || "",
+      mail_1_status: lead.mail_1_status || "",
+      mail_2_status: lead.mail_2_status || "",
+      mail_3_status: lead.mail_3_status || "",
+    });
+  };
+
+  const handleSaveLeadEdit = async (e) => {
+    if (e) e.preventDefault();
+    if (!editingLead) return;
+
+    setSavingLead(true);
+    try {
+      const res = await fetch("/api/leads", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingLead.id,
+          updates: {
+            full_name: editForm.full_name,
+            email: editForm.email,
+            mobile: editForm.mobile,
+            job_role: editForm.job_role,
+            years_of_experience: editForm.years_of_experience,
+            notice_period: editForm.notice_period,
+            mail_1_status: editForm.mail_1_status || null,
+            mail_2_status: editForm.mail_2_status || null,
+            mail_3_status: editForm.mail_3_status || null,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLeadsList((prev) =>
+          prev.map((l) => (l.id === editingLead.id ? { ...l, ...data.lead } : l))
+        );
+        fetchStats();
+        setEditingLead(null);
+        alert(`✔ Lead ID ${editingLead.id} updated in database successfully!`);
+      } else {
+        alert(data.error || "Failed to update lead.");
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setSavingLead(false);
     }
   };
 
@@ -745,37 +886,84 @@ export default function AdminPage() {
         {/* =================================================================== */}
         {activeTab === "leads" && (
           <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-              <div>
-                <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#0f172a" }}>📋 Database Leads &amp; Direct WhatsApp</h2>
-                <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "#64748b" }}>
-                  Tap the WhatsApp button next to any lead to send pre-filled messages directly to their phone!
-                </p>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
+                <div>
+                  <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#0f172a" }}>📋 Database Leads &amp; Direct WhatsApp</h2>
+                  <p style={{ margin: "3px 0 0 0", fontSize: 12, color: "#64748b" }}>
+                    Edit any lead, trigger WhatsApp messages, or delete individual/range of leads directly without SQL queries.
+                  </p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  {/* Range Delete Controls */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff1f2", padding: "6px 10px", borderRadius: 8, border: "1px solid #fecdd3" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#be123c" }}>🗑️ Delete Range:</span>
+                    <span style={{ fontSize: 11, color: "#64748b" }}>From</span>
+                    <input
+                      type="number"
+                      placeholder="ID"
+                      value={rangeFromId}
+                      onChange={(e) => setRangeFromId(e.target.value)}
+                      style={{ width: 68, padding: "5px 6px", borderRadius: 4, border: "1px solid #cbd5e1", fontSize: 12, textAlign: "center" }}
+                    />
+                    <span style={{ fontSize: 11, color: "#64748b" }}>To</span>
+                    <input
+                      type="number"
+                      placeholder="ID"
+                      value={rangeToId}
+                      onChange={(e) => setRangeToId(e.target.value)}
+                      style={{ width: 68, padding: "5px 6px", borderRadius: 4, border: "1px solid #cbd5e1", fontSize: 12, textAlign: "center" }}
+                    />
+                    <button
+                      onClick={handleDeleteRange}
+                      disabled={deletingRange || !rangeFromId || !rangeToId}
+                      style={{
+                        padding: "5px 10px",
+                        background: deletingRange || !rangeFromId || !rangeToId ? "#cbd5e1" : "#e11d48",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 4,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: deletingRange || !rangeFromId || !rangeToId ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {deletingRange ? "Deleting..." : "Clear Range"}
+                    </button>
+                  </div>
+
+                  {/* Clear All Leads Button */}
+                  <button
+                    onClick={handleClearAllLeads}
+                    disabled={clearingLeads}
+                    style={{
+                      padding: "8px 12px",
+                      background: "#fef2f2",
+                      color: "#b91c1c",
+                      border: "1px solid #fecaca",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {clearingLeads ? "Clearing..." : "⚠️ Clear All Leads"}
+                  </button>
+                </div>
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+
+              {/* Search bar & count */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                 <input
                   type="text"
-                  placeholder="🔍 Search name, email, role, phone..."
+                  placeholder="🔍 Search name, email, role, phone, or ID..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minWidth: 240 }}
+                  style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minWidth: 280 }}
                 />
-                <button
-                  onClick={handleClearAllLeads}
-                  disabled={clearingLeads}
-                  style={{
-                    padding: "8px 12px",
-                    background: "#fef2f2",
-                    color: "#b91c1c",
-                    border: "1px solid #fecaca",
-                    borderRadius: 6,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  {clearingLeads ? "Clearing..." : "🗑️ Clear All Leads"}
-                </button>
+                <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                  Showing {filteredLeads.length} of {leadsList.length} leads
+                </span>
               </div>
             </div>
 
@@ -792,12 +980,13 @@ export default function AdminPage() {
                     <th style={{ padding: "8px 10px" }}>Mail 1</th>
                     <th style={{ padding: "8px 10px" }}>Mail 2</th>
                     <th style={{ padding: "8px 10px" }}>Mail 3</th>
+                    <th style={{ padding: "8px 10px", textAlign: "center" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredLeads.length === 0 ? (
                     <tr>
-                      <td colSpan={9} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>
+                      <td colSpan={10} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>
                         {searchQuery ? "No matching leads found." : "No leads in database yet. Go to 'Import Leads' tab above to import your sheet data!"}
                       </td>
                     </tr>
@@ -869,6 +1058,45 @@ export default function AdminPage() {
                           ) : (
                             <span style={{ color: "#94a3b8", fontSize: 11 }}>--</span>
                           )}
+                        </td>
+                        <td style={{ padding: "8px 10px", textAlign: "center", whiteSpace: "nowrap" }}>
+                          <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                            <button
+                              onClick={() => handleStartEdit(lead)}
+                              title="Edit Lead Details"
+                              style={{
+                                padding: "4px 8px",
+                                background: "#eff6ff",
+                                color: "#1d4ed8",
+                                border: "1px solid #bfdbfe",
+                                borderRadius: 5,
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 3,
+                              }}
+                            >
+                              ✏️ Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSingle(lead.id, lead.full_name)}
+                              disabled={deletingLeadId === lead.id}
+                              title="Delete this Lead"
+                              style={{
+                                padding: "4px 7px",
+                                background: "#fff1f2",
+                                color: "#e11d48",
+                                border: "1px solid #fecdd3",
+                                borderRadius: 5,
+                                fontSize: 12,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {deletingLeadId === lead.id ? "..." : "🗑️"}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1125,6 +1353,238 @@ export default function AdminPage() {
             ) : (
               <div>Loading templates...</div>
             )}
+          </div>
+        )}
+
+        {/* =================================================================== */}
+        {/* MODAL: ✏️ EDIT LEAD (Direct Supabase Sync) */}
+        {/* =================================================================== */}
+        {editingLead && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15, 23, 42, 0.65)",
+              backdropFilter: "blur(4px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 9999,
+              padding: 16,
+            }}
+            onClick={() => !savingLead && setEditingLead(null)}
+          >
+            <div
+              style={{
+                background: "#ffffff",
+                borderRadius: 16,
+                width: "100%",
+                maxWidth: 560,
+                maxHeight: "90vh",
+                overflowY: "auto",
+                boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+                padding: 24,
+                border: "1px solid #e2e8f0",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, borderBottom: "1px solid #f1f5f9", paddingBottom: 12 }}>
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#0f172a" }}>
+                    ✏️ Edit Lead (ID: #{editingLead.id})
+                  </h3>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>
+                    Directly updates Supabase database &bull; No SQL query needed
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !savingLead && setEditingLead(null)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: 20,
+                    color: "#94a3b8",
+                    cursor: "pointer",
+                    padding: 4,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveLeadEdit}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+                  {/* Full Name */}
+                  <div style={{ gridColumn: "span 2" }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                      Candidate Full Name:
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.full_name}
+                      onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+                      required
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                      Email Address:
+                    </label>
+                    <input
+                      type="email"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                      required
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  {/* Mobile */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                      Mobile (WhatsApp):
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.mobile}
+                      onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
+                      placeholder="e.g. 919890912747"
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  {/* Job Role */}
+                  <div style={{ gridColumn: "span 2" }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                      Target Job Role:
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.job_role}
+                      onChange={(e) => setEditForm({ ...editForm, job_role: e.target.value })}
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  {/* Experience */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                      Years of Experience:
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.years_of_experience}
+                      onChange={(e) => setEditForm({ ...editForm, years_of_experience: e.target.value })}
+                      placeholder="e.g. 3y 6m"
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  {/* Notice Period */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                      Notice Period:
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.notice_period}
+                      onChange={(e) => setEditForm({ ...editForm, notice_period: e.target.value })}
+                      placeholder="e.g. 15 Days or less"
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  {/* Mail 1 Status */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                      Mail 1 Status:
+                    </label>
+                    <select
+                      value={editForm.mail_1_status}
+                      onChange={(e) => setEditForm({ ...editForm, mail_1_status: e.target.value })}
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, background: "#fff", boxSizing: "border-box" }}
+                    >
+                      <option value="">Pending (Not Sent)</option>
+                      <option value="sent">Sent</option>
+                      <option value="failed">Failed</option>
+                    </select>
+                  </div>
+
+                  {/* Mail 2 Status */}
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                      Mail 2 Status:
+                    </label>
+                    <select
+                      value={editForm.mail_2_status}
+                      onChange={(e) => setEditForm({ ...editForm, mail_2_status: e.target.value })}
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, background: "#fff", boxSizing: "border-box" }}
+                    >
+                      <option value="">-- (Not Sent)</option>
+                      <option value="sent">Sent</option>
+                      <option value="failed">Failed</option>
+                    </select>
+                  </div>
+
+                  {/* Mail 3 Status */}
+                  <div style={{ gridColumn: "span 2" }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                      Mail 3 Status:
+                    </label>
+                    <select
+                      value={editForm.mail_3_status}
+                      onChange={(e) => setEditForm({ ...editForm, mail_3_status: e.target.value })}
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, background: "#fff", boxSizing: "border-box" }}
+                    >
+                      <option value="">-- (Not Sent)</option>
+                      <option value="sent">Sent</option>
+                      <option value="failed">Failed</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, borderTop: "1px solid #f1f5f9", paddingTop: 16 }}>
+                  <button
+                    type="button"
+                    onClick={() => setEditingLead(null)}
+                    disabled={savingLead}
+                    style={{
+                      padding: "10px 16px",
+                      background: "#f1f5f9",
+                      color: "#475569",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 8,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingLead}
+                    style={{
+                      padding: "10px 20px",
+                      background: savingLead ? "#94a3b8" : "#2563eb",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 8,
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: savingLead ? "not-allowed" : "pointer",
+                      boxShadow: "0 2px 8px rgba(37,99,235,0.2)",
+                    }}
+                  >
+                    {savingLead ? "💾 Saving..." : "💾 Save Changes to DB"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 
