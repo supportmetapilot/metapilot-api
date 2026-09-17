@@ -22,6 +22,15 @@ export default function AdminPage() {
   const [sendingBatch, setSendingBatch] = useState(false);
   const [batchResult, setBatchResult] = useState(null);
 
+  // Multi-Campaign & Day Gaps State
+  const [campaignName, setCampaignName] = useState("");
+  const [followup1Days, setFollowup1Days] = useState("3");
+  const [followup2Days, setFollowup2Days] = useState("7");
+  const [campaignsList, setCampaignsList] = useState([]);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+  const [viewingCampaignLog, setViewingCampaignLog] = useState(null);
+  const [runningFollowup, setRunningFollowup] = useState(false);
+
   // Import Leads state
   const [rawText, setRawText] = useState("");
   const [defaultRole, setDefaultRole] = useState("Software Testing");
@@ -77,6 +86,7 @@ export default function AdminPage() {
       fetchStats();
       fetchLeads();
       fetchTemplates();
+      fetchCampaigns();
     }
   }, []);
 
@@ -88,6 +98,7 @@ export default function AdminPage() {
       fetchStats();
       fetchLeads();
       fetchTemplates();
+      fetchCampaigns();
     } else {
       alert("Invalid PIN. Please enter the correct MetaPilot Admin PIN.");
     }
@@ -97,6 +108,21 @@ export default function AdminPage() {
     localStorage.removeItem("mp_admin_pin");
     setIsAuthenticated(false);
     setPin("");
+  };
+
+  const fetchCampaigns = async () => {
+    setLoadingCampaigns(true);
+    try {
+      const res = await fetch("/api/campaigns?key=metapilot2026");
+      const data = await res.json();
+      if (data.success) {
+        setCampaignsList(data.campaigns || []);
+      }
+    } catch (err) {
+      console.error("Failed to load campaigns", err);
+    } finally {
+      setLoadingCampaigns(false);
+    }
   };
 
   const fetchStats = async () => {
@@ -326,11 +352,13 @@ export default function AdminPage() {
     return `${(totalSec / 3600).toFixed(1)} hours`;
   };
 
-  // Run campaign batch
-  const handleSendBatch = async () => {
+  // Run campaign batch with custom sequence gaps and campaign tracking
+  const handleLaunchCampaign = async () => {
     const rangeMsg = startId && endId ? ` for Lead ID range ${startId} to ${endId}` : ` for next ${activeLimit} leads`;
+    const f1 = followup1Days ? parseInt(followup1Days, 10) : 3;
+    const f2 = followup2Days ? parseInt(followup2Days, 10) : 7;
     const confirmSend = window.confirm(
-      `Start outreach campaign${rangeMsg}?\nAuto round-robin A -> B -> C enabled.\nEstimated duration: ~${estimatedTimeText()}`
+      `Start outreach campaign "${campaignName || "Campaign #" + Date.now().toString().slice(-4)}"${rangeMsg}?\n\nSchedule:\n• Mail 1: Today (Day 0, round-robin A→B→C)\n• Mail 2: After ${f1} days\n• Mail 3: After ${f2} days\n• Delay between leads: ${activeDelaySec}s\n\nEstimated batch duration: ~${estimatedTimeText()}`
     );
     if (!confirmSend) return;
 
@@ -338,26 +366,86 @@ export default function AdminPage() {
     setBatchResult(null);
 
     try {
-      const res = await fetch("/api/send-mail", {
+      const res = await fetch("/api/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "campaign",
+          name: campaignName || undefined,
           limit: activeLimit,
           startId: startId ? parseInt(startId, 10) : null,
           endId: endId ? parseInt(endId, 10) : null,
           delaySec: activeDelaySec,
+          followup1Days: f1,
+          followup2Days: f2,
           key: "metapilot2026",
         }),
       });
       const data = await res.json();
       setBatchResult(data);
+      if (data.success) {
+        setCampaignName("");
+      }
       fetchStats();
       fetchLeads();
+      fetchCampaigns();
     } catch (err) {
       setBatchResult({ success: false, error: err.message });
     } finally {
       setSendingBatch(false);
+    }
+  };
+
+  const handleSendBatch = handleLaunchCampaign;
+
+  const handleRunFollowupNow = async () => {
+    const confirmRun = window.confirm(
+      "Run Follow-up sequence check right now?\n\nThe system will inspect all active campaigns and dispatch Mail 2 or Mail 3 to leads whose day-gap intervals have elapsed."
+    );
+    if (!confirmRun) return;
+
+    setRunningFollowup(true);
+    try {
+      const res = await fetch("/api/cron/followup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "metapilot2026" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(
+          `✔ Follow-up Sequence Check Completed!\n• Mail 2 sent: ${data.results?.mail2Sent || 0}\n• Mail 3 sent: ${data.results?.mail3Sent || 0}`
+        );
+        fetchStats();
+        fetchLeads();
+        fetchCampaigns();
+      } else {
+        alert(data.error || "Follow-up execution failed.");
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setRunningFollowup(false);
+    }
+  };
+
+  const handleDeleteCampaign = async (id, name) => {
+    const confirmDel = window.confirm(
+      `Remove campaign "${name || id}" from history? (Lead email statuses in database will remain unchanged)`
+    );
+    if (!confirmDel) return;
+
+    try {
+      const res = await fetch(`/api/campaigns?id=${id}&key=metapilot2026`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCampaignsList((prev) => prev.filter((c) => c.id !== id));
+      } else {
+        alert(data.error || "Failed to remove campaign");
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
     }
   };
 
@@ -659,7 +747,21 @@ export default function AdminPage() {
                 The system automatically rotates templates (A &rarr; B &rarr; C) across leads for Mail 1, and follows the strict cyclic follow-up rotation (A &rarr; B &rarr; C &rarr; A).
               </p>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 20 }}>
+              {/* Campaign Name Identifier */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 6 }}>
+                  Campaign Name / Label (Optional):
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Pune Software Testing Batch 1 (Apr 2026)"
+                  value={campaignName}
+                  onChange={(e) => setCampaignName(e.target.value)}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box", background: "#f8fafc" }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 18 }}>
                 {/* Batch Size */}
                 <div>
                   <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Batch Size:</label>
@@ -692,7 +794,7 @@ export default function AdminPage() {
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     <input
                       type="number"
-                      placeholder="From (e.g. 3056)"
+                      placeholder="From (e.g. 153)"
                       value={startId}
                       onChange={(e) => setStartId(e.target.value)}
                       style={{ width: "50%", padding: "10px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, boxSizing: "border-box" }}
@@ -700,7 +802,7 @@ export default function AdminPage() {
                     <span style={{ color: "#94a3b8" }}>&rarr;</span>
                     <input
                       type="number"
-                      placeholder="To (e.g. 3112)"
+                      placeholder="To (e.g. 174)"
                       value={endId}
                       onChange={(e) => setEndId(e.target.value)}
                       style={{ width: "50%", padding: "10px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, boxSizing: "border-box" }}
@@ -711,7 +813,7 @@ export default function AdminPage() {
 
                 {/* Delay between Emails */}
                 <div>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Delay between Mails:</label>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Delay between Leads:</label>
                   <select
                     value={delayPreset}
                     onChange={(e) => setDelayPreset(e.target.value)}
@@ -747,14 +849,69 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              {/* Follow-up Sequence Schedule: Custom Day Gaps */}
+              <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: 10, marginBottom: 18, border: "1px solid #e2e8f0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#1e293b" }}>
+                    ⏳ Follow-up Sequence Schedule (Custom Day Gaps)
+                  </span>
+                  <span style={{ fontSize: 11, color: "#64748b" }}>
+                    Default: 0 days (Mail 1), 3 days (Mail 2), 7 days (Mail 3)
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 4 }}>
+                      Mail 1 &rarr; Mail 2 Gap:
+                    </label>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <input
+                        type="number"
+                        min="1"
+                        max="60"
+                        value={followup1Days}
+                        onChange={(e) => setFollowup1Days(e.target.value)}
+                        placeholder="3"
+                        style={{ width: 80, padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontWeight: 700, textAlign: "center", background: "#fff" }}
+                      />
+                      <span style={{ fontSize: 13, color: "#334155", fontWeight: 600 }}>Days</span>
+                      <span style={{ fontSize: 11, color: "#94a3b8" }}>(Default: 3)</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 4 }}>
+                      Mail 2 &rarr; Mail 3 Gap:
+                    </label>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <input
+                        type="number"
+                        min="1"
+                        max="90"
+                        value={followup2Days}
+                        onChange={(e) => setFollowup2Days(e.target.value)}
+                        placeholder="7"
+                        style={{ width: 80, padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontWeight: 700, textAlign: "center", background: "#fff" }}
+                      />
+                      <span style={{ fontSize: 13, color: "#334155", fontWeight: 600 }}>Days</span>
+                      <span style={{ fontSize: 11, color: "#94a3b8" }}>(Default: 7)</span>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: "#64748b", marginTop: 8 }}>
+                  💡 Mail 1 today round-robin A &rarr; B &rarr; C ne dispatch hoil. Mail 2 he {followup1Days || 3} diwsanantr jail, ani Mail 3 he pudhchya {followup2Days || 7} diwsanantr jail.
+                </div>
+              </div>
+
               <div style={{ background: "#f8fafc", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13, color: "#475569", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                 <div>Target: <strong>{activeLimit} Leads</strong> {startId && endId ? `(IDs: ${startId} to ${endId})` : ""}</div>
                 <div>Delay: <strong>{activeDelaySec}s</strong> gap</div>
-                <div>Est. Completion Time: <strong style={{ color: "#2563eb" }}>~{estimatedTimeText()}</strong></div>
+                <div>Schedule: <strong>M1: Day 0 &bull; M2: +{followup1Days || 3}d &bull; M3: +{followup2Days || 7}d</strong></div>
+                <div>Est. Time: <strong style={{ color: "#2563eb" }}>~{estimatedTimeText()}</strong></div>
               </div>
 
               <button
-                onClick={handleSendBatch}
+                onClick={handleLaunchCampaign}
                 disabled={sendingBatch}
                 style={{
                   width: "100%",
@@ -769,14 +926,16 @@ export default function AdminPage() {
                   boxShadow: "0 4px 12px rgba(37,99,235,0.2)",
                 }}
               >
-                {sendingBatch ? `⏳ Running Campaign Batch (${activeLimit} leads, please wait)...` : `🚀 Start Campaign Batch (${activeLimit} Leads)`}
+                {sendingBatch
+                  ? `⏳ Running Campaign Batch (${activeLimit} leads, please wait)...`
+                  : `🚀 Launch Campaign Batch (${activeLimit} Leads)`}
               </button>
 
               {/* Batch Result Report */}
               {batchResult && (
                 <div style={{ marginTop: 20, padding: 16, borderRadius: 8, background: batchResult.success ? "#f0fdf4" : "#fef2f2", border: `1px solid ${batchResult.success ? "#bbf7d0" : "#fecaca"}` }}>
                   <div style={{ fontWeight: 700, color: batchResult.success ? "#166534" : "#991b1b", fontSize: 14 }}>
-                    {batchResult.success ? `✔ Campaign Completed! Successfully Sent: ${batchResult.sent} / ${batchResult.total} leads` : `❌ Error: ${batchResult.error}`}
+                    {batchResult.success ? `✔ Campaign Launched! Successfully Sent: ${batchResult.sent} / ${batchResult.total} leads` : `❌ Error: ${batchResult.error}`}
                   </div>
                   {batchResult.results && batchResult.results.length > 0 && (
                     <div style={{ marginTop: 12, maxHeight: 220, overflowY: "auto", fontSize: 12, color: "#334155" }}>
@@ -792,6 +951,145 @@ export default function AdminPage() {
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+
+            {/* Campaigns History & Live Tracking */}
+            <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+                <div>
+                  <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#0f172a" }}>📊 Active &amp; Past Outreach Campaigns ({campaignsList.length})</h2>
+                  <p style={{ margin: "3px 0 0 0", fontSize: 12, color: "#64748b" }}>
+                    Multiple campaigns run independently. Check progress, lead ranges, and dispatch logs.
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={handleRunFollowupNow}
+                    disabled={runningFollowup}
+                    style={{
+                      padding: "8px 14px",
+                      background: runningFollowup ? "#94a3b8" : "#10b981",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: runningFollowup ? "not-allowed" : "pointer",
+                      boxShadow: "0 2px 6px rgba(16,185,129,0.2)"
+                    }}
+                  >
+                    {runningFollowup ? "⏳ Checking..." : "⚡ Run Follow-up Check Now"}
+                  </button>
+                  <button
+                    onClick={fetchCampaigns}
+                    disabled={loadingCampaigns}
+                    style={{
+                      padding: "8px 14px",
+                      background: "#f1f5f9",
+                      color: "#334155",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 6,
+                      fontWeight: 600,
+                      fontSize: 12,
+                      cursor: "pointer"
+                    }}
+                  >
+                    {loadingCampaigns ? "Loading..." : "🔄 Refresh"}
+                  </button>
+                </div>
+              </div>
+
+              {campaignsList.length === 0 ? (
+                <div style={{ padding: "30px 20px", textAlign: "center", color: "#94a3b8", background: "#f8fafc", borderRadius: 8, border: "1px dashed #cbd5e1" }}>
+                  No campaigns launched yet. Create and dispatch your first campaign using the form above!
+                </div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0", textAlign: "left" }}>
+                        <th style={{ padding: "10px 12px", color: "#475569" }}>Campaign</th>
+                        <th style={{ padding: "10px 12px", color: "#475569" }}>Lead Range</th>
+                        <th style={{ padding: "10px 12px", color: "#475569" }}>Schedule &amp; Delay</th>
+                        <th style={{ padding: "10px 12px", color: "#475569" }}>Live Progress</th>
+                        <th style={{ padding: "10px 12px", color: "#475569" }}>Status</th>
+                        <th style={{ padding: "10px 12px", color: "#475569", textAlign: "right" }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {campaignsList.map((c) => (
+                        <tr key={c.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "12px 12px" }}>
+                            <div style={{ fontWeight: 700, color: "#0f172a" }}>{c.name || `Campaign #${c.id}`}</div>
+                            <div style={{ fontSize: 11, color: "#94a3b8" }}>{new Date(c.created_at || c.start_time).toLocaleString()}</div>
+                          </td>
+                          <td style={{ padding: "12px 12px" }}>
+                            <div style={{ fontWeight: 600, color: "#334155" }}>
+                              {c.start_id && c.end_id ? `IDs: ${c.start_id} to ${c.end_id}` : `${c.leads_limit || c.total_leads || "--"} Leads`}
+                            </div>
+                            <div style={{ fontSize: 11, color: "#64748b" }}>
+                              Total target: {c.total_leads || c.leads_limit || 0}
+                            </div>
+                          </td>
+                          <td style={{ padding: "12px 12px" }}>
+                            <div style={{ fontSize: 12, color: "#334155" }}>
+                              Gap: <strong>{c.gap_seconds || 2}s</strong> / lead
+                            </div>
+                            <div style={{ fontSize: 11, color: "#64748b" }}>
+                              M1: 0d &bull; M2: +{c.followup_1_days || 3}d &bull; M3: +{c.followup_2_days || 7}d
+                            </div>
+                          </td>
+                          <td style={{ padding: "12px 12px" }}>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 11, padding: "2px 6px", background: "#ecfdf5", color: "#065f46", borderRadius: 4, fontWeight: 700 }}>
+                                M1: {c.m1_sent ?? (c.processed_count || 0)}
+                              </span>
+                              <span style={{ fontSize: 11, padding: "2px 6px", background: "#faf5ff", color: "#6d28d9", borderRadius: 4, fontWeight: 700 }}>
+                                M2: {c.m2_sent ?? 0}
+                              </span>
+                              <span style={{ fontSize: 11, padding: "2px 6px", background: "#fffbeb", color: "#92400e", borderRadius: 4, fontWeight: 700 }}>
+                                M3: {c.m3_sent ?? 0}
+                              </span>
+                            </div>
+                          </td>
+                          <td style={{ padding: "12px 12px" }}>
+                            <span style={{
+                              fontSize: 11,
+                              padding: "3px 8px",
+                              borderRadius: 12,
+                              fontWeight: 700,
+                              background: c.status === "completed" ? "#ecfdf5" : "#eff6ff",
+                              color: c.status === "completed" ? "#065f46" : "#1e40af",
+                            }}>
+                              {c.status || "active"}
+                            </span>
+                          </td>
+                          <td style={{ padding: "12px 12px", textAlign: "right" }}>
+                            <div style={{ display: "inline-flex", gap: 6 }}>
+                              {c.results && c.results.length > 0 && (
+                                <button
+                                  onClick={() => setViewingCampaignLog(c)}
+                                  style={{ padding: "4px 8px", background: "#f1f5f9", color: "#1e293b", border: "1px solid #cbd5e1", borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                                  title="View dispatch details"
+                                >
+                                  📋 Logs
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDeleteCampaign(c.id, c.name)}
+                                style={{ padding: "4px 8px", background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                                title="Remove from history"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -1584,6 +1882,119 @@ export default function AdminPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Campaign Dispatch Log Modal */}
+        {viewingCampaignLog && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(15, 23, 42, 0.6)",
+              backdropFilter: "blur(4px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              padding: 16,
+            }}
+            onClick={() => setViewingCampaignLog(null)}
+          >
+            <div
+              style={{
+                background: "#ffffff",
+                borderRadius: 14,
+                width: "100%",
+                maxWidth: 680,
+                maxHeight: "90vh",
+                overflowY: "auto",
+                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2)",
+                padding: 24,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, borderBottom: "1px solid #f1f5f9", paddingBottom: 12 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#0f172a" }}>
+                    📋 Campaign Logs: {viewingCampaignLog.name || `Campaign #${viewingCampaignLog.id}`}
+                  </h3>
+                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                    Created: {new Date(viewingCampaignLog.created_at || viewingCampaignLog.start_time).toLocaleString()} &bull; Delay: {viewingCampaignLog.gap_seconds || 2}s/lead &bull; M2: +{viewingCampaignLog.followup_1_days || 3}d &bull; M3: +{viewingCampaignLog.followup_2_days || 7}d
+                  </div>
+                </div>
+                <button
+                  onClick={() => setViewingCampaignLog(null)}
+                  style={{ background: "#f1f5f9", border: "none", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#64748b" }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={{ marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                <div style={{ background: "#ecfdf5", padding: "10px 12px", borderRadius: 8, textAlign: "center" }}>
+                  <div style={{ fontSize: 11, color: "#065f46", fontWeight: 700 }}>Mail 1 Sent</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#047857" }}>{viewingCampaignLog.m1_sent ?? (viewingCampaignLog.processed_count || 0)}</div>
+                </div>
+                <div style={{ background: "#faf5ff", padding: "10px 12px", borderRadius: 8, textAlign: "center" }}>
+                  <div style={{ fontSize: 11, color: "#6d28d9", fontWeight: 700 }}>Mail 2 Sent</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#7c3aed" }}>{viewingCampaignLog.m2_sent ?? 0}</div>
+                </div>
+                <div style={{ background: "#fffbeb", padding: "10px 12px", borderRadius: 8, textAlign: "center" }}>
+                  <div style={{ fontSize: 11, color: "#92400e", fontWeight: 700 }}>Mail 3 Sent</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#b45309" }}>{viewingCampaignLog.m3_sent ?? 0}</div>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 8 }}>
+                Recipients Dispatched in this Campaign ({viewingCampaignLog.results ? viewingCampaignLog.results.length : 0}):
+              </div>
+
+              {viewingCampaignLog.results && viewingCampaignLog.results.length > 0 ? (
+                <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, maxHeight: 320, overflowY: "auto" }}>
+                  {viewingCampaignLog.results.map((r, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        padding: "10px 12px",
+                        borderBottom: i === viewingCampaignLog.results.length - 1 ? "none" : "1px solid #f1f5f9",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        fontSize: 12,
+                      }}
+                    >
+                      <div>
+                        <span style={{ fontWeight: 700, color: "#0f172a" }}>[ID {r.id}] {r.name || "Lead"}</span>
+                        <span style={{ color: "#64748b", marginLeft: 8 }}>{r.email}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ padding: "2px 6px", background: "#eff6ff", color: "#1e40af", borderRadius: 4, fontWeight: 700 }}>
+                          Mail {r.slot || 1} &bull; Tpl {r.template}
+                        </span>
+                        <span>{r.status === "sent" ? "✅ Sent" : "⚠️ " + (r.status || "Failed")}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ padding: "20px", textAlign: "center", color: "#94a3b8", background: "#f8fafc", borderRadius: 8 }}>
+                  No lead dispatch details recorded for this campaign.
+                </div>
+              )}
+
+              <div style={{ marginTop: 18, textAlign: "right" }}>
+                <button
+                  onClick={() => setViewingCampaignLog(null)}
+                  style={{ padding: "8px 18px", background: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         )}
