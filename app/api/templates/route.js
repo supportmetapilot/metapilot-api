@@ -62,29 +62,29 @@ Team MetaPilot
 MetaPilot | India
 www.MetaPilot.in`,
 
-  email_c_subject: "Connecting regarding your {{jobRole}} interviews, {{fullName}}",
+  email_c_subject: "Quick note on your {{jobRole}} interview preparation, {{fullName}}",
   email_c_body: `Hi {{fullName}},
 
-Reaching out as I saw you are preparing for {{jobRole}} roles.
+I came across your profile and noticed you are preparing for upcoming opportunities in the {{jobRole}} domain.
 
-One of the biggest hurdles candidates face in technical interviews is structuring answers properly when put on the spot, even when they know the core concepts well.
+One of the biggest hurdles candidates face in technical interviews is structuring answers properly under pressure, even when they know the core technical concepts well.
 
-We designed MetaPilot as an invisible co-pilot to give you that edge — listening silently to the interviewer and displaying real-time structured talking points and code solutions directly on your screen:
-* Crisp Answer Cues: Get real-time technical bullet points so your explanations sound clear, confident, and senior-level.
-* Live Coding & Syntax Support: Immediate hints and code explanations for live whiteboard or coding challenges.
-* 100% Invisible: Undetectable during screen sharing on all major meeting platforms.
+To help you speak fluently and handle difficult rounds with ease, we built MetaPilot — an invisible desktop AI co-pilot that assists you silently in real time:
+* Instant Answer Pointers: Generates crisp, structured bullet points as the interviewer speaks so you sound clear, confident, and senior-level.
+* Live Coding & Problem Solving: Press Ctrl+Z to take a silent snapshot of any coding problem, SQL query, or error on screen for instant hints.
+* 100% Invisible: Runs privately on your desktop and never shows up during screen sharing on Google Meet, Zoom, or Teams.
 
 Career Guidance & Mentor Support:
-Facing challenges like low interview call frequency, career gaps/transitions, or prep confusion? As an exclusive perk for Pro Plan members, our mentors provide written profile & interview audits over email. You can simply reply to this email with your current situation or resume, and our senior mentors will review and share a clear, actionable roadmap directly over email.
+Facing challenges like low interview call frequency, career gaps, or prep confusion? Our senior mentors also provide written profile and interview audits over email (included as a dedicated benefit for our Pro Plan members). You can simply reply to this email with your current resume or situation, and our mentors will review and share a clear roadmap directly over email.
 
-You can try out our 1-day free trial to test it before any upcoming rounds:
+You can test the 1-day free trial directly on your laptop before any upcoming rounds:
 👉 www.MetaPilot.in
 
-(Note: You can apply code "welcome25" for 25% off on www.MetaPilot.in if you decide to upgrade).
+(Note: If you decide to upgrade to any plan, you can use code "welcome25" for 25% off on www.MetaPilot.in)
 
-📺 Want to see it in action? Check out our YouTube channel @MetaPilotApps (watch video demos) or follow on Instagram @metapilot_go_pro and drop a comment!
+📺 Want to see real demos? Search @MetaPilotApps on YouTube (watch demo videos) or find us on Instagram at @metapilot_go_pro and drop your questions in the comments!
 
-Or simply reply "FREE TRIAL" to this email and our team will get your test account ready for you.
+If you'd like us to set up your test access directly, feel free to reply "YES" to this email and we'll send your login details right away.
 
 Best regards,
 Team MetaPilot
