@@ -20,16 +20,18 @@ Career Guidance & Mentor Support:
 Facing challenges like low interview call frequency, career gaps/transitions, or prep confusion? Pro Plan members get direct email-based 1-on-1 mentorship — you can simply reply to this email with your current situation or resume, and our senior mentors will review and share a clear, actionable roadmap directly over email.
 
 We offer a completely free 1-day full access pass so you can test it on your laptop before any real interview:
-👉 https://metapilot.in/
+👉 www.MetaPilot.in
 
-(Note: If you decide to upgrade to any plan, you can use code "welcome25" for 25% off.)
+(Note: If you decide to upgrade to any plan, you can use code "welcome25" for 25% off on www.MetaPilot.in)
+
+📺 Want to see it in action? Search @MetaPilotApps on YouTube (watch demo videos) or find us on Instagram at @metapilot_go_pro and drop your questions in the comments!
 
 If you'd like us to set up your free trial access directly, just reply "YES" to this email and we'll send your login details right away.
 
 Best regards,
 Team MetaPilot
-MetaPilot | Pune
-https://metapilot.in/`,
+MetaPilot | India
+www.MetaPilot.in`,
 
   email_b_subject: "Regarding your {{jobRole}} interview preparation, {{fullName}}",
   email_b_body: `Hi {{fullName}},
@@ -47,16 +49,18 @@ Career Guidance & Mentor Support:
 Struggling with interview shortlists, career transitions, or interview anxiety? As an exclusive perk for Pro Plan members, our mentors provide written profile & interview audits over email. Just reply with your queries here, and get personalized written feedback without the hassle of scheduling calls.
 
 You can test the 1-day free trial directly on your computer before your next interview:
-👉 https://metapilot.in/
+👉 www.MetaPilot.in
 
-(Note: You can use coupon code "welcome25" for 25% off on our plans).
+(Note: You can use coupon code "welcome25" for 25% off on www.MetaPilot.in).
+
+📺 Want to see real demos? Search @MetaPilotApps on YouTube (watch walkthrough videos) or check our Instagram @metapilot_go_pro and drop any questions in the comments!
 
 Do you have any interviews scheduled this week? If you'd like direct help setting up your access, feel free to reply directly to this email.
 
 Best regards,
 Team MetaPilot
-MetaPilot | Pune
-https://metapilot.in/`,
+MetaPilot | India
+www.MetaPilot.in`,
 
   email_c_subject: "Connecting regarding your {{jobRole}} interviews, {{fullName}}",
   email_c_body: `Hi {{fullName}},
@@ -74,16 +78,18 @@ Career Guidance & Mentor Support:
 Facing challenges like low interview call frequency, career gaps/transitions, or prep confusion? As an exclusive perk for Pro Plan members, our mentors provide written profile & interview audits over email. You can simply reply to this email with your current situation or resume, and our senior mentors will review and share a clear, actionable roadmap directly over email.
 
 You can try out our 1-day free trial to test it before any upcoming rounds:
-👉 https://metapilot.in/
+👉 www.MetaPilot.in
 
-(Note: You can apply code "welcome25" for 25% off if you decide to upgrade).
+(Note: You can apply code "welcome25" for 25% off on www.MetaPilot.in if you decide to upgrade).
+
+📺 Want to see it in action? Check out our YouTube channel @MetaPilotApps (watch video demos) or follow on Instagram @metapilot_go_pro and drop a comment!
 
 Or simply reply "FREE TRIAL" to this email and our team will get your test account ready for you.
 
 Best regards,
 Team MetaPilot
-MetaPilot | Pune
-https://metapilot.in/`,
+MetaPilot | India
+www.MetaPilot.in`,
 
   wa_draft_1: `Hi {{fullName}} 👋
 
