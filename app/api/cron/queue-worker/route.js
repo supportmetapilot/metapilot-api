@@ -343,10 +343,18 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const queryKey = searchParams.get("key");
     const body = await request.json().catch(() => ({}));
-    const { key } = body;
+    const key = body.key || queryKey;
+    const authHeader = request.headers.get("authorization");
 
-    if (key !== "metapilot2026" && key !== process.env.CRON_SECRET) {
+    const isAuthorized =
+      authHeader === `Bearer ${process.env.CRON_SECRET}` ||
+      key === "metapilot2026" ||
+      key === process.env.CRON_SECRET;
+
+    if (!isAuthorized) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

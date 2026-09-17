@@ -32,6 +32,7 @@ export default function AdminPage() {
   const [viewingCampaignLog, setViewingCampaignLog] = useState(null);
   const [runningFollowup, setRunningFollowup] = useState(false);
   const [triggeringWorker, setTriggeringWorker] = useState(false);
+  const [queueReport, setQueueReport] = useState(null);
 
   // Import Leads state
   const [rawText, setRawText] = useState("");
@@ -91,6 +92,42 @@ export default function AdminPage() {
       fetchCampaigns();
     }
   }, []);
+
+  // Background Heartbeat for Smart Cloud Queue (Runs every 30s when Admin is open)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const pingWorker = async () => {
+      try {
+        const res = await fetch("/api/cron/queue-worker?key=metapilot2026", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: "metapilot2026" }),
+        });
+        const data = await res.json();
+        if (data && data.success && data.report) {
+          setQueueReport(data.report);
+          if (
+            data.report.mail1Dispatched ||
+            data.report.mail2Dispatched ||
+            data.report.mail3Dispatched
+          ) {
+            fetchStats();
+            fetchLeads();
+            fetchCampaigns();
+          }
+        }
+      } catch (_) {}
+    };
+
+    const initialTimer = setTimeout(pingWorker, 2000);
+    const interval = setInterval(pingWorker, 30000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
+  }, [isAuthenticated]);
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -1042,6 +1079,23 @@ export default function AdminPage() {
                 <div style={{ fontSize: 13, color: "#15803d", marginTop: 4, lineHeight: 1.4 }}>
                   Campaigns run continuously in the cloud without blocking your browser. You can close your laptop/mobile anytime! Leads are delivered one-by-one at your chosen delay for 100% natural human deliverability.
                 </div>
+                {queueReport && (
+                  <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: "#047857", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    {queueReport.mail1Dispatched ? (
+                      <span style={{ background: "#dcfce7", padding: "2px 8px", borderRadius: 4 }}>
+                        ✅ Just sent: [ID {queueReport.mail1Dispatched.leadId}] {queueReport.mail1Dispatched.name} (Tpl {queueReport.mail1Dispatched.template})
+                      </span>
+                    ) : queueReport.waitingNextLead ? (
+                      <span style={{ background: "#dcfce7", padding: "2px 8px", borderRadius: 4 }}>
+                        ⏳ Next lead due in ~{Math.ceil(queueReport.waitingNextLead.remainingSec / 60)} min ({queueReport.waitingNextLead.remainingSec}s) &bull; Campaign: {queueReport.waitingNextLead.campaign}
+                      </span>
+                    ) : (
+                      <span style={{ color: "#059669" }}>
+                        ✔ Queue synced &bull; {queueReport.activeCampaignsCount} active campaign(s)
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <button
