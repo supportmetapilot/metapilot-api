@@ -99,6 +99,7 @@ export async function POST(request) {
       delaySec = 2,
       followup1Days = 3,
       followup2Days = 7,
+      scheduledStartTime = null,
       key,
     } = body;
 
@@ -112,6 +113,12 @@ export async function POST(request) {
     const activeDelay = parseFloat(delaySec) || 2;
     const f1Days = parseFloat(followup1Days) >= 0 ? parseFloat(followup1Days) : 3;
     const f2Days = parseFloat(followup2Days) >= 0 ? parseFloat(followup2Days) : 7;
+
+    // Check if campaign is scheduled for a future date/time
+    const isScheduledFuture =
+      Boolean(scheduledStartTime) &&
+      !isNaN(new Date(scheduledStartTime).getTime()) &&
+      new Date(scheduledStartTime).getTime() > Date.now();
 
     // 1. Query matching leads that need Mail 1 (or next in sequence)
     let query = supabase
@@ -148,8 +155,8 @@ export async function POST(request) {
     let sentCount = 0;
 
     // Check if fast synchronous dispatch is safe (<= 2s delay and <= 15 leads)
-    const isFastSync = activeDelay <= 2 && leads.length <= 15;
-    const leadsToDispatchNow = isFastSync ? leads : [leads[0]];
+    const isFastSync = !isScheduledFuture && activeDelay <= 2 && leads.length <= 15;
+    const leadsToDispatchNow = isScheduledFuture ? [] : isFastSync ? leads : [leads[0]];
 
     // 2. Dispatch initial lead(s) immediately so staff gets instant feedback
     for (let i = 0; i < leadsToDispatchNow.length; i++) {
@@ -201,8 +208,8 @@ export async function POST(request) {
       }
     }
 
-    const isFullySent = sentCount === leads.length;
-    const campaignStatus = isFullySent ? "completed_m1" : "in_progress";
+    const isFullySent = !isScheduledFuture && sentCount === leads.length;
+    const campaignStatus = isScheduledFuture ? "scheduled" : isFullySent ? "completed_m1" : "in_progress";
     const nowTime = new Date().toISOString();
 
     // 3. Record Campaign in campaigns table
@@ -211,10 +218,10 @@ export async function POST(request) {
         campaign_date: new Date().toISOString().split("T")[0],
         leads_limit: leads.length,
         gap_minutes: activeDelay / 60,
-        start_time: new Date().toTimeString().split(" ")[0],
+        start_time: isScheduledFuture ? new Date(scheduledStartTime).toTimeString().split(" ")[0] : new Date().toTimeString().split(" ")[0],
         followup_1_days: f1Days,
         followup_2_days: f2Days,
-        status: isFullySent ? "Active" : "Queued",
+        status: isScheduledFuture ? "Scheduled" : isFullySent ? "Active" : "Queued",
         processed_count: sentCount,
         next_lead_id: actualStartId,
       });
@@ -234,8 +241,9 @@ export async function POST(request) {
       delaySec: activeDelay,
       followup1Days: f1Days,
       followup2Days: f2Days,
+      scheduledStartTime: isScheduledFuture ? new Date(scheduledStartTime).toISOString() : null,
       status: campaignStatus,
-      lastDispatchedAt: nowTime,
+      lastDispatchedAt: isScheduledFuture ? null : nowTime,
       createdAt: nowTime,
       results,
     };
@@ -246,13 +254,19 @@ export async function POST(request) {
 
     const isQueued = !isFullySent;
     const delayDesc = activeDelay >= 60 ? `${(activeDelay / 60).toFixed(0)} min` : `${activeDelay}s`;
-    const message = isQueued
-      ? `✔ Campaign Launched! 1st lead dispatched immediately. Remaining ${leads.length - sentCount} leads are queued for 24/7 automated delivery every ${delayDesc}.`
-      : `✔ Campaign Completed! All ${sentCount} leads dispatched successfully.`;
+    let message = "";
+    if (isScheduledFuture) {
+      message = `✔ Campaign Scheduled! Mail 1 will automatically start on ${new Date(scheduledStartTime).toLocaleString()} (delivery every ${delayDesc}).`;
+    } else if (isQueued) {
+      message = `✔ Campaign Launched! 1st lead dispatched immediately. Remaining ${leads.length - sentCount} leads are queued for 24/7 automated delivery every ${delayDesc}.`;
+    } else {
+      message = `✔ Campaign Completed! All ${sentCount} leads dispatched successfully.`;
+    }
 
     return NextResponse.json({
       success: true,
       message,
+      scheduled: isScheduledFuture,
       queued: isQueued,
       campaign: newCampaign,
       sent: sentCount,

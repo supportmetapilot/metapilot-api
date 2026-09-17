@@ -54,7 +54,11 @@ async function processQueue() {
 
   const registry = await getCampaignsRegistry();
   const activeCampaigns = registry.filter(
-    (c) => c.status === "in_progress" || c.status === "queued" || c.status === "active"
+    (c) =>
+      c.status === "in_progress" ||
+      c.status === "queued" ||
+      c.status === "active" ||
+      c.status === "scheduled"
   );
   report.activeCampaignsCount = activeCampaigns.length;
 
@@ -62,6 +66,24 @@ async function processQueue() {
 
   // 1. Process Mail 1 Queue for active campaigns
   for (const camp of activeCampaigns) {
+    // If campaign is scheduled for a future time, check if scheduled time has arrived
+    if (camp.scheduledStartTime) {
+      const scheduledMs = new Date(camp.scheduledStartTime).getTime();
+      if (!isNaN(scheduledMs) && scheduledMs > now.getTime()) {
+        const remainingSec = Math.ceil((scheduledMs - now.getTime()) / 1000);
+        report.waitingNextLead = {
+          campaign: camp.name || camp.id,
+          status: "scheduled",
+          scheduledStart: camp.scheduledStartTime,
+          remainingSec,
+        };
+        continue; // Scheduled in the future, wait
+      } else if (camp.status === "scheduled") {
+        camp.status = "in_progress";
+        registryUpdated = true;
+      }
+    }
+
     const delaySec = parseFloat(camp.delaySec || camp.gap_seconds || 120);
     const lastSent = camp.lastDispatchedAt ? new Date(camp.lastDispatchedAt).getTime() : 0;
     const elapsedSec = (now.getTime() - lastSent) / 1000;

@@ -26,6 +26,7 @@ export default function AdminPage() {
   const [campaignName, setCampaignName] = useState("");
   const [followup1Days, setFollowup1Days] = useState("3");
   const [followup2Days, setFollowup2Days] = useState("7");
+  const [scheduledStartTime, setScheduledStartTime] = useState("");
   const [campaignsList, setCampaignsList] = useState([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [viewingCampaignLog, setViewingCampaignLog] = useState(null);
@@ -358,8 +359,12 @@ export default function AdminPage() {
     const rangeMsg = startId && endId ? ` for Lead ID range ${startId} to ${endId}` : ` for next ${activeLimit} leads`;
     const f1 = followup1Days ? parseInt(followup1Days, 10) : 3;
     const f2 = followup2Days ? parseInt(followup2Days, 10) : 7;
+    const startNotice = scheduledStartTime
+      ? `• Mail 1: Scheduled for ${new Date(scheduledStartTime).toLocaleString()}`
+      : `• Mail 1: Today (Day 0, round-robin A→B→C)`;
+
     const confirmSend = window.confirm(
-      `Start outreach campaign "${campaignName || "Campaign #" + Date.now().toString().slice(-4)}"${rangeMsg}?\n\nSchedule:\n• Mail 1: Today (Day 0, round-robin A→B→C)\n• Mail 2: After ${f1} days\n• Mail 3: After ${f2} days\n• Delay between leads: ${activeDelaySec}s\n\nEstimated batch duration: ~${estimatedTimeText()}`
+      `Start outreach campaign "${campaignName || "Campaign #" + Date.now().toString().slice(-4)}"${rangeMsg}?\n\nSchedule:\n${startNotice}\n• Mail 2: After ${f1} days\n• Mail 3: After ${f2} days\n• Delay between leads: ${activeDelaySec}s\n\nEstimated batch duration: ~${estimatedTimeText()}`
     );
     if (!confirmSend) return;
 
@@ -378,6 +383,7 @@ export default function AdminPage() {
           delaySec: activeDelaySec,
           followup1Days: f1,
           followup2Days: f2,
+          scheduledStartTime: scheduledStartTime || null,
           key: "metapilot2026",
         }),
       });
@@ -385,6 +391,7 @@ export default function AdminPage() {
       setBatchResult(data);
       if (data.success) {
         setCampaignName("");
+        setScheduledStartTime("");
       }
       fetchStats();
       fetchLeads();
@@ -797,6 +804,37 @@ export default function AdminPage() {
                 />
               </div>
 
+              {/* Start Date & Timing (Schedule Mail 1) */}
+              <div style={{ marginBottom: 18, background: "#f8fafc", padding: "12px 14px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
+                  <label style={{ fontSize: 13, fontWeight: 700, color: "#334155", margin: 0 }}>
+                    ⏰ Campaign Start Date &amp; Time for Mail 1 (Optional):
+                  </label>
+                  {scheduledStartTime && (
+                    <button
+                      type="button"
+                      onClick={() => setScheduledStartTime("")}
+                      style={{ padding: "3px 8px", background: "#fee2e2", border: "1px solid #fecaca", borderRadius: 4, fontSize: 11, cursor: "pointer", color: "#991b1b", fontWeight: 600 }}
+                    >
+                      Clear &times; (Start Immediately)
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    type="datetime-local"
+                    value={scheduledStartTime}
+                    onChange={(e) => setScheduledStartTime(e.target.value)}
+                    style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, background: "#fff" }}
+                  />
+                  <span style={{ fontSize: 12, color: scheduledStartTime ? "#2563eb" : "#64748b", fontWeight: scheduledStartTime ? 700 : 400 }}>
+                    {scheduledStartTime
+                      ? `🗓️ Scheduled: Mail 1 will start automatically on ${new Date(scheduledStartTime).toLocaleString()}`
+                      : "⚡ Leave empty to start immediately today"}
+                  </span>
+                </div>
+              </div>
+
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 18 }}>
                 {/* Batch Size */}
                 <div>
@@ -942,6 +980,7 @@ export default function AdminPage() {
               <div style={{ background: "#f8fafc", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13, color: "#475569", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                 <div>Target: <strong>{activeLimit} Leads</strong> {startId && endId ? `(IDs: ${startId} to ${endId})` : ""}</div>
                 <div>Delay: <strong>{activeDelaySec}s</strong> gap</div>
+                <div>Start: <strong>{scheduledStartTime ? new Date(scheduledStartTime).toLocaleString() : "Immediately"}</strong></div>
                 <div>Schedule: <strong>M1: Day 0 &bull; M2: +{followup1Days || 3}d &bull; M3: +{followup2Days || 7}d</strong></div>
                 <div>Est. Time: <strong style={{ color: "#2563eb" }}>~{estimatedTimeText()}</strong></div>
               </div>
@@ -952,7 +991,7 @@ export default function AdminPage() {
                 style={{
                   width: "100%",
                   padding: 16,
-                  background: sendingBatch ? "#94a3b8" : "#2563eb",
+                  background: sendingBatch ? "#94a3b8" : scheduledStartTime ? "#7c3aed" : "#2563eb",
                   color: "#fff",
                   border: "none",
                   borderRadius: 8,
@@ -963,8 +1002,10 @@ export default function AdminPage() {
                 }}
               >
                 {sendingBatch
-                  ? `⏳ Running Campaign Batch (${activeLimit} leads, please wait)...`
-                  : `🚀 Launch Campaign Batch (${activeLimit} Leads)`}
+                  ? `⏳ Processing Campaign (${activeLimit} leads, please wait)...`
+                  : scheduledStartTime
+                  ? `🗓️ Schedule Campaign Batch for ${new Date(scheduledStartTime).toLocaleDateString()} (${activeLimit} Leads)`
+                  : `🚀 Launch Campaign Batch Now (${activeLimit} Leads)`}
               </button>
 
               {/* Batch Result Report */}
@@ -1092,7 +1133,12 @@ export default function AdminPage() {
                         <tr key={c.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
                           <td style={{ padding: "12px 12px" }}>
                             <div style={{ fontWeight: 700, color: "#0f172a" }}>{c.name || `Campaign #${c.id}`}</div>
-                            <div style={{ fontSize: 11, color: "#94a3b8" }}>{new Date(c.created_at || c.start_time).toLocaleString()}</div>
+                            <div style={{ fontSize: 11, color: "#94a3b8" }}>{new Date(c.created_at || c.start_time || c.createdAt).toLocaleString()}</div>
+                            {c.scheduledStartTime && (
+                              <div style={{ fontSize: 11, color: "#7c3aed", fontWeight: 600, marginTop: 2 }}>
+                                ⏰ Start: {new Date(c.scheduledStartTime).toLocaleString()}
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: "12px 12px" }}>
                             <div style={{ fontWeight: 600, color: "#334155" }}>
@@ -1104,16 +1150,16 @@ export default function AdminPage() {
                           </td>
                           <td style={{ padding: "12px 12px" }}>
                             <div style={{ fontSize: 12, color: "#334155" }}>
-                              Gap: <strong>{c.gap_seconds || 2}s</strong> / lead
+                              Gap: <strong>{c.gap_seconds || c.delaySec || 2}s</strong> / lead
                             </div>
                             <div style={{ fontSize: 11, color: "#64748b" }}>
-                              M1: 0d &bull; M2: +{c.followup_1_days || 3}d &bull; M3: +{c.followup_2_days || 7}d
+                              M1: 0d &bull; M2: +{c.followup_1_days || c.followup1Days || 3}d &bull; M3: +{c.followup_2_days || c.followup2Days || 7}d
                             </div>
                           </td>
                           <td style={{ padding: "12px 12px" }}>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                               <span style={{ fontSize: 11, padding: "2px 6px", background: "#ecfdf5", color: "#065f46", borderRadius: 4, fontWeight: 700 }}>
-                                M1: {c.m1_sent ?? (c.processed_count || 0)}
+                                M1: {c.m1_sent ?? (c.processedCount || c.processed_count || 0)}
                               </span>
                               <span style={{ fontSize: 11, padding: "2px 6px", background: "#faf5ff", color: "#6d28d9", borderRadius: 4, fontWeight: 700 }}>
                                 M2: {c.m2_sent ?? 0}
@@ -1129,10 +1175,10 @@ export default function AdminPage() {
                               padding: "3px 8px",
                               borderRadius: 12,
                               fontWeight: 700,
-                              background: c.status === "completed" ? "#ecfdf5" : "#eff6ff",
-                              color: c.status === "completed" ? "#065f46" : "#1e40af",
+                              background: c.status === "scheduled" ? "#faf5ff" : c.status === "completed" || c.status === "completed_m1" ? "#ecfdf5" : "#eff6ff",
+                              color: c.status === "scheduled" ? "#6d28d9" : c.status === "completed" || c.status === "completed_m1" ? "#065f46" : "#1e40af",
                             }}>
-                              {c.status || "active"}
+                              {c.status === "scheduled" ? "🗓️ Scheduled" : c.status || "active"}
                             </span>
                           </td>
                           <td style={{ padding: "12px 12px", textAlign: "right" }}>
