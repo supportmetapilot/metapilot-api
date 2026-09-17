@@ -147,9 +147,13 @@ export async function POST(request) {
     const results = [];
     let sentCount = 0;
 
-    // 2. Dispatch Mail 1 to leads in this campaign batch with round-robin A->B->C
-    for (let i = 0; i < leads.length; i++) {
-      const lead = leads[i];
+    // Check if fast synchronous dispatch is safe (<= 2s delay and <= 15 leads)
+    const isFastSync = activeDelay <= 2 && leads.length <= 15;
+    const leadsToDispatchNow = isFastSync ? leads : [leads[0]];
+
+    // 2. Dispatch initial lead(s) immediately so staff gets instant feedback
+    for (let i = 0; i < leadsToDispatchNow.length; i++) {
+      const lead = leadsToDispatchNow[i];
       const templateCode = templates[i % 3];
 
       try {
@@ -161,11 +165,14 @@ export async function POST(request) {
         await sendEmail(lead.email, template.subject, template.htmlBody, lead.full_name);
 
         const now = new Date().toISOString();
-        await supabase.from("leads").update({
-          mail_1_template: templateCode,
-          mail_1_status: `SENT_${templateCode}`,
-          mail_1_sent_at: now,
-        }).eq("id", lead.id);
+        await supabase
+          .from("leads")
+          .update({
+            mail_1_template: templateCode,
+            mail_1_status: `SENT_${templateCode}`,
+            mail_1_sent_at: now,
+          })
+          .eq("id", lead.id);
 
         sentCount++;
         results.push({
@@ -173,6 +180,7 @@ export async function POST(request) {
           name: lead.full_name,
           email: lead.email,
           template: templateCode,
+          slot: 1,
           status: "sent",
           sentAt: now,
         });
@@ -182,16 +190,20 @@ export async function POST(request) {
           name: lead.full_name,
           email: lead.email,
           template: templateCode,
+          slot: 1,
           status: "error",
           error: sendErr.message,
         });
       }
 
-      // Delay between emails for rate limiting
-      if (i < leads.length - 1 && activeDelay > 0) {
+      if (i < leadsToDispatchNow.length - 1 && activeDelay > 0) {
         await new Promise((r) => setTimeout(r, activeDelay * 1000));
       }
     }
+
+    const isFullySent = sentCount === leads.length;
+    const campaignStatus = isFullySent ? "completed_m1" : "in_progress";
+    const nowTime = new Date().toISOString();
 
     // 3. Record Campaign in campaigns table
     try {
@@ -202,7 +214,7 @@ export async function POST(request) {
         start_time: new Date().toTimeString().split(" ")[0],
         followup_1_days: f1Days,
         followup_2_days: f2Days,
-        status: "Active",
+        status: isFullySent ? "Active" : "Queued",
         processed_count: sentCount,
         next_lead_id: actualStartId,
       });
@@ -218,12 +230,13 @@ export async function POST(request) {
       endId: actualEndId,
       leadIds: leads.map((l) => l.id),
       totalLeads: leads.length,
-      sentCount,
+      processedCount: sentCount,
       delaySec: activeDelay,
       followup1Days: f1Days,
       followup2Days: f2Days,
-      status: "Active",
-      createdAt: new Date().toISOString(),
+      status: campaignStatus,
+      lastDispatchedAt: nowTime,
+      createdAt: nowTime,
       results,
     };
 
@@ -231,12 +244,20 @@ export async function POST(request) {
     registry.unshift(newCampaign);
     await saveCampaignRegistry(registry);
 
+    const isQueued = !isFullySent;
+    const delayDesc = activeDelay >= 60 ? `${(activeDelay / 60).toFixed(0)} min` : `${activeDelay}s`;
+    const message = isQueued
+      ? `✔ Campaign Launched! 1st lead dispatched immediately. Remaining ${leads.length - sentCount} leads are queued for 24/7 automated delivery every ${delayDesc}.`
+      : `✔ Campaign Completed! All ${sentCount} leads dispatched successfully.`;
+
     return NextResponse.json({
       success: true,
-      message: `Campaign "${campaignName}" launched successfully!`,
+      message,
+      queued: isQueued,
       campaign: newCampaign,
       sent: sentCount,
       total: leads.length,
+      results,
     });
   } catch (error) {
     console.error("POST /api/campaigns error:", error);

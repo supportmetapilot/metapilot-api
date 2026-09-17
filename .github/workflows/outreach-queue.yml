@@ -1,0 +1,17 @@
+name: MetaPilot Smart Cloud Outreach Queue Worker
+
+on:
+  schedule:
+    # Runs every 5 minutes 24/7 in GitHub cloud
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  ping-queue-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger MetaPilot Queue Worker
+        run: |
+          curl -s -X POST "https://api.metapilot.in/api/cron/queue-worker" \
+            -H "Content-Type: application/json" \
+            -d '{"key":"metapilot2026"}'

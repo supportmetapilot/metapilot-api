@@ -30,6 +30,7 @@ export default function AdminPage() {
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [viewingCampaignLog, setViewingCampaignLog] = useState(null);
   const [runningFollowup, setRunningFollowup] = useState(false);
+  const [triggeringWorker, setTriggeringWorker] = useState(false);
 
   // Import Leads state
   const [rawText, setRawText] = useState("");
@@ -425,6 +426,41 @@ export default function AdminPage() {
       alert("Error: " + err.message);
     } finally {
       setRunningFollowup(false);
+    }
+  };
+
+  const handleTriggerQueueWorker = async () => {
+    setTriggeringWorker(true);
+    try {
+      const res = await fetch("/api/cron/queue-worker", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "metapilot2026" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const rep = data.report;
+        let msg = "✔ Cloud Queue Processed!";
+        if (rep.mail1Dispatched) {
+          msg += `\n• Mail 1 Dispatched: [ID ${rep.mail1Dispatched.leadId}] ${rep.mail1Dispatched.name} (${rep.mail1Dispatched.email}) — Template ${rep.mail1Dispatched.template}`;
+        } else if (rep.waitingNextLead) {
+          msg += `\n• Next Lead in "${rep.waitingNextLead.campaign}" is waiting for its scheduled interval (${rep.waitingNextLead.remainingSec}s remaining of ${rep.waitingNextLead.delaySec}s gap).`;
+        } else {
+          msg += "\n• No pending leads currently due in active queue.";
+        }
+        if (rep.mail2Dispatched) msg += `\n• Mail 2 Dispatched: [ID ${rep.mail2Dispatched.leadId}]`;
+        if (rep.mail3Dispatched) msg += `\n• Mail 3 Dispatched: [ID ${rep.mail3Dispatched.leadId}]`;
+        alert(msg);
+        fetchStats();
+        fetchLeads();
+        fetchCampaigns();
+      } else {
+        alert(data.error || "Failed to trigger queue worker");
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setTriggeringWorker(false);
     }
   };
 
@@ -953,6 +989,39 @@ export default function AdminPage() {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* 🟢 Smart Cloud Queue 24/7 Status Banner */}
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: "16px 20px", marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14, boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+              <div style={{ flex: 1, minWidth: 280 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 18 }}>🟢</span>
+                  <strong style={{ fontSize: 15, color: "#166534" }}>Smart Cloud Queue Active (24/7 Hands-Free Automation)</strong>
+                </div>
+                <div style={{ fontSize: 13, color: "#15803d", marginTop: 4, lineHeight: 1.4 }}>
+                  Campaigns run continuously in the cloud without blocking your browser. You can close your laptop/mobile anytime! Leads are delivered one-by-one at your chosen delay for 100% natural human deliverability.
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  onClick={handleTriggerQueueWorker}
+                  disabled={triggeringWorker}
+                  style={{
+                    padding: "10px 16px",
+                    background: triggeringWorker ? "#94a3b8" : "#059669",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 8,
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: triggeringWorker ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 6px rgba(5,150,105,0.25)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {triggeringWorker ? "⏳ Checking Queue..." : "⚡ Dispatch Next Lead Now (Skip wait)"}
+                </button>
+              </div>
             </div>
 
             {/* Campaigns History & Live Tracking */}
