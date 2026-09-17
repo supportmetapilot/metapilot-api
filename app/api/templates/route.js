@@ -13,55 +13,77 @@ In technical rounds, most candidates struggle not because they lack knowledge, b
 
 We recently built a silent AI co-pilot called MetaPilot specifically to help {{jobRole}} professionals overcome this:
 * Real-Time Voice Assistant: Listens to the interviewer's questions and provides structured technical points in 2 seconds.
-* Live Coding OCR: Press Ctrl+Z to take a silent snapshot of any coding problem or SQL query on screen and get instant solution hints.
+* Live Coding & Problem Solving: Press Ctrl+Z to take a silent snapshot of any coding problem, SQL query, or error on screen for instant hints.
 * 100% Invisible: Designed to remain completely undetectable during screen sharing on Google Meet, Zoom, and MS Teams.
+
+Career Guidance & Mentor Support:
+If you are facing challenges like low interview call frequency, career gaps/transitions, domain switching, or interview prep confusion — our senior mentors also offer 1-on-1 personalized guidance (included exclusively for members on our Pro Plan).
 
 We offer a completely free 1-day full access pass so you can test it on your laptop before any real interview:
 👉 https://metapilot.in/
 
-If you'd like me to set up your free trial access directly, just reply "YES" to this email and I'll send your login details right away.
+(Note: If you decide to upgrade to any plan, you can use code "welcome25" for 25% off.)
+
+If you'd like us to set up your free trial access directly, just reply "YES" to this email and we'll send your login details right away.
 
 Best regards,
-Hrushikesh More
-MetaPilot Team | Pune
+Team MetaPilot
+MetaPilot | Pune
 https://metapilot.in/`,
 
-  email_b_subject: "Following up regarding your {{jobRole}} interviews, {{fullName}}",
+  email_b_subject: "Regarding your {{jobRole}} interview preparation, {{fullName}}",
   email_b_body: `Hi {{fullName}},
 
-Following up on my previous note. With technical interviews getting harder and more competitive this year, many {{jobRole}} professionals find it challenging to handle rapid theoretical questions or tricky scenario-based rounds.
+I noticed you are actively preparing for opportunities in the {{jobRole}} domain.
 
-A lot of candidates from {{jobRole}} backgrounds are now using MetaPilot during their preparation to maintain confidence and structure their answers seamlessly.
+Technical screening rounds have become significantly more competitive this year, especially with tricky problem-solving rounds, unexpected scenario questions, and live coding exercises under strict time limits.
 
-You can test the 1-day free trial on your computer here:
+To help {{jobRole}} professionals clear these rounds with confidence, we built MetaPilot — a silent desktop AI co-pilot that assists you in real time:
+* Instant Solution Hints: Silently capture coding questions, SQL queries, or technical errors on screen (Ctrl+Z) and get instant walkthroughs.
+* Spoken Answer Prompts: Generates crisp, structured technical points as the interviewer speaks so you answer fluently without hesitation.
+* Completely Screen-Safe: Runs privately on your desktop without showing up on Google Meet, Zoom, or Teams screen sharing.
+
+Career Guidance & Mentor Support:
+Along with the co-pilot, if you are navigating challenges like low call frequency, career gaps, domain transitions, or interview prep confusion, our senior mentors offer 1-on-1 strategic guidance (available exclusively for members on our Pro Plan).
+
+You can test the 1-day free trial directly on your computer before your next interview:
 👉 https://metapilot.in/
 
-Do you have any interviews scheduled this week? If you run into any questions or need help setting it up on your laptop, feel free to reply directly to this email.
+(Note: You can use coupon code "welcome25" for 25% off on our plans).
 
-Warm regards,
-Hrushikesh More
-MetaPilot Team | Pune
+Do you have any interviews scheduled this week? If you'd like direct help setting up your access, feel free to reply directly to this email.
+
+Best regards,
+Team MetaPilot
+MetaPilot | Pune
 https://metapilot.in/`,
 
-  email_c_subject: "Final note on your {{jobRole}} interview preparation, {{fullName}}",
+  email_c_subject: "Connecting regarding your {{jobRole}} interviews, {{fullName}}",
   email_c_body: `Hi {{fullName}},
 
-I just wanted to drop a quick final note in case you have upcoming interview rounds.
+Reaching out as I saw you are preparing for {{jobRole}} roles.
 
-Facing high-pressure interviews alone without real-time assistance is unnecessary when you can have a silent AI co-pilot right in front of you. MetaPilot helps you handle both live coding and technical theory without showing up on any screen share.
+One of the biggest hurdles candidates face in technical interviews is structuring answers properly when put on the spot, even when they know the core concepts well.
 
-If you'd like to test it before your next round, you can grab your 1-day free access here:
+We designed MetaPilot as an invisible co-pilot to give you that edge — listening silently to the interviewer and displaying real-time structured talking points and code solutions directly on your screen:
+* Crisp Answer Cues: Get real-time technical bullet points so your explanations sound clear, confident, and senior-level.
+* Live Coding & Syntax Support: Immediate hints and code explanations for live whiteboard or coding challenges.
+* 100% Invisible: Undetectable during screen sharing on all major meeting platforms.
+
+Career Guidance & Mentor Support:
+If you are experiencing low interview call frequency, career gaps/transitions, or confusion regarding interview preparation — our senior mentors provide personalized 1-on-1 guidance (included as an exclusive benefit for Pro Plan members).
+
+You can try out our 1-day free trial to test it before any upcoming rounds:
 👉 https://metapilot.in/
 
-(Tip: Apply promo code WELCOME25 at checkout for Flat 25% OFF if you decide to upgrade.)
+(Note: You can apply code "welcome25" for 25% off if you decide to upgrade).
 
-Or simply reply to this email with "FREE TRIAL" and I'll help you get started right away.
+Or simply reply "FREE TRIAL" to this email and our team will get your test account ready for you.
 
-Wishing you all the best for your interviews!
-
-Best,
-Hrushikesh More
-Founder, MetaPilot | https://metapilot.in/`,
+Best regards,
+Team MetaPilot
+MetaPilot | Pune
+https://metapilot.in/`,
 
   wa_draft_1: `Hi {{fullName}} 👋
 

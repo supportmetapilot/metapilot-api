@@ -58,7 +58,7 @@ export default function AdminPage() {
 
   // Test Email state
   const [testEmail, setTestEmail] = useState("");
-  const [testName, setTestName] = useState("Hrushikesh More");
+  const [testName, setTestName] = useState("Candidate Name");
   const [testRole, setTestRole] = useState("Software Testing");
   const [testTemplate, setTestTemplate] = useState("A");
   const [sendingTest, setSendingTest] = useState(false);
@@ -844,9 +844,9 @@ export default function AdminPage() {
                       onChange={(e) => setTestTemplate(e.target.value)}
                       style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, background: "#fff", boxSizing: "border-box" }}
                     >
-                      <option value="A">Template A (Initial Outreach - Human)</option>
-                      <option value="B">Template B (Follow-up - Clean Text)</option>
-                      <option value="C">Template C (Final Note - Invitation)</option>
+                      <option value="A">Template A (Real-Time Voice & Pressure Angle)</option>
+                      <option value="B">Template B (Technical Screening & Problem Solving Angle)</option>
+                      <option value="C">Template C (Interview Confidence & Structuring Angle)</option>
                     </select>
                   </div>
                 </div>
@@ -1262,7 +1262,7 @@ export default function AdminPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
                 {/* Email Template A */}
                 <div style={{ background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px 0", color: "#1e293b" }}>✉️ Email Template A (Initial Outreach)</h3>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px 0", color: "#1e293b" }}>✉️ Email Template A (Real-Time Voice &amp; Pressure Angle)</h3>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Subject:</label>
                   <input
                     type="text"
@@ -1281,7 +1281,7 @@ export default function AdminPage() {
 
                 {/* Email Template B */}
                 <div style={{ background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px 0", color: "#1e293b" }}>✉️ Email Template B (Follow-up)</h3>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px 0", color: "#1e293b" }}>✉️ Email Template B (Technical Screening &amp; Problem Solving Angle)</h3>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Subject:</label>
                   <input
                     type="text"
@@ -1300,7 +1300,7 @@ export default function AdminPage() {
 
                 {/* Email Template C */}
                 <div style={{ background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px 0", color: "#1e293b" }}>✉️ Email Template C (Final Call)</h3>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px 0", color: "#1e293b" }}>✉️ Email Template C (Interview Confidence &amp; Structuring Angle)</h3>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Subject:</label>
                   <input
                     type="text"
