@@ -5,38 +5,48 @@ import { useState, useEffect } from "react";
 export default function AdminPage() {
   const [pin, setPin] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [activeTab, setActiveTab] = useState("campaign"); // "campaign", "leads", "import", "templates"
+
+  // Live Stats
   const [stats, setStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
 
-  // Campaign batch state
+  // Campaign Batch Dispatcher
   const [batchPreset, setBatchPreset] = useState("50");
   const [customBatchSize, setCustomBatchSize] = useState("");
   const [startId, setStartId] = useState("");
   const [endId, setEndId] = useState("");
   const [delayPreset, setDelayPreset] = useState("2");
   const [customDelay, setCustomDelay] = useState("");
-  const [delayUnit, setDelayUnit] = useState("sec"); // "sec" or "min"
+  const [delayUnit, setDelayUnit] = useState("sec");
   const [sendingBatch, setSendingBatch] = useState(false);
   const [batchResult, setBatchResult] = useState(null);
 
   // Import Leads state
   const [rawText, setRawText] = useState("");
-  const [defaultRole, setDefaultRole] = useState("Software Engineer");
+  const [defaultRole, setDefaultRole] = useState("Software Testing");
   const [importing, setImporting] = useState(false);
   const [importPreview, setImportPreview] = useState(null);
   const [importMessage, setImportMessage] = useState(null);
 
+  // Leads List & Search
+  const [leadsList, setLeadsList] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [clearingLeads, setClearingLeads] = useState(false);
+
   // Test Email state
   const [testEmail, setTestEmail] = useState("");
   const [testName, setTestName] = useState("Hrushikesh More");
-  const [testRole, setTestRole] = useState("Senior Software Engineer");
+  const [testRole, setTestRole] = useState("Software Testing");
   const [testTemplate, setTestTemplate] = useState("A");
   const [sendingTest, setSendingTest] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
-  // Leads list table
-  const [leadsList, setLeadsList] = useState([]);
-  const [loadingLeads, setLoadingLeads] = useState(false);
+  // Templates Content Editor
+  const [templates, setTemplates] = useState(null);
+  const [savingTemplates, setSavingTemplates] = useState(false);
+  const [templatesSavedMsg, setTemplatesSavedMsg] = useState(null);
 
   useEffect(() => {
     const savedPin = localStorage.getItem("mp_admin_pin");
@@ -45,6 +55,7 @@ export default function AdminPage() {
       setIsAuthenticated(true);
       fetchStats();
       fetchLeads();
+      fetchTemplates();
     }
   }, []);
 
@@ -55,6 +66,7 @@ export default function AdminPage() {
       setIsAuthenticated(true);
       fetchStats();
       fetchLeads();
+      fetchTemplates();
     } else {
       alert("Invalid PIN. Please enter the correct MetaPilot Admin PIN.");
     }
@@ -84,15 +96,76 @@ export default function AdminPage() {
   const fetchLeads = async () => {
     setLoadingLeads(true);
     try {
-      const res = await fetch("/api/leads?limit=50&offset=0");
+      const res = await fetch("/api/leads?limit=300&offset=0");
       const data = await res.json();
       if (data.success) {
         setLeadsList(data.leads || []);
       }
     } catch (err) {
-      console.error("Failed to load leads list", err);
+      console.error("Failed to load leads", err);
     } finally {
       setLoadingLeads(false);
+    }
+  };
+
+  const fetchTemplates = async () => {
+    try {
+      const res = await fetch("/api/templates");
+      const data = await res.json();
+      if (data.success) {
+        setTemplates(data.templates);
+      }
+    } catch (err) {
+      console.error("Failed to load templates", err);
+    }
+  };
+
+  const handleSaveTemplates = async (e) => {
+    e.preventDefault();
+    setSavingTemplates(true);
+    setTemplatesSavedMsg(null);
+    try {
+      const res = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templates, key: "metapilot2026" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTemplatesSavedMsg("✔ Templates saved successfully to database!");
+      } else {
+        alert(data.error || "Failed to save");
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setSavingTemplates(false);
+    }
+  };
+
+  const handleClearAllLeads = async () => {
+    const confirmWipe = window.confirm(
+      "⚠️ WARNING: This will permanently delete all leads from the database so you can re-import cleanly.\n\nAre you sure you want to delete all leads?"
+    );
+    if (!confirmWipe) return;
+
+    setClearingLeads(true);
+    try {
+      const res = await fetch("/api/leads/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear_all" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("All leads have been cleared. You can now re-import freshly.");
+        fetchStats();
+        fetchLeads();
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setClearingLeads(false);
     }
   };
 
@@ -112,11 +185,11 @@ export default function AdminPage() {
     return `${(totalSec / 3600).toFixed(1)} hours`;
   };
 
-  // Handle Campaign Dispatch
+  // Run campaign batch
   const handleSendBatch = async () => {
     const rangeMsg = startId && endId ? ` for Lead ID range ${startId} to ${endId}` : ` for next ${activeLimit} leads`;
     const confirmSend = window.confirm(
-      `Start campaign${rangeMsg} with ${activeDelaySec}s gap between emails?\nEstimated duration: ~${estimatedTimeText()}`
+      `Start outreach campaign${rangeMsg}?\nAuto round-robin A -> B -> C enabled.\nEstimated duration: ~${estimatedTimeText()}`
     );
     if (!confirmSend) return;
 
@@ -150,7 +223,7 @@ export default function AdminPage() {
   // Preview & Duplicate Check for Raw Lead Paste
   const handleCheckDuplicates = async () => {
     if (!rawText.trim()) {
-      alert("Please paste some raw email data or names first.");
+      alert("Please paste your raw Excel or TSV data first.");
       return;
     }
     setImporting(true);
@@ -193,7 +266,7 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setImportMessage(`✔ ${data.message} (${data.skippedDuplicates || 0} duplicates skipped)`);
+        setImportMessage(`✔ ${data.message} (${data.skippedDuplicates || 0} duplicates avoided)`);
         setImportPreview(null);
         setRawText("");
         fetchStats();
@@ -212,7 +285,7 @@ export default function AdminPage() {
   const handleSendTest = async (e) => {
     e.preventDefault();
     if (!testEmail) {
-      alert("Please enter a destination email address.");
+      alert("Please enter your email address.");
       return;
     }
 
@@ -240,6 +313,43 @@ export default function AdminPage() {
       setSendingTest(false);
     }
   };
+
+  // WhatsApp Link Generator
+  const openWhatsApp = (lead, draftNumber = 1) => {
+    if (!lead.mobile) {
+      alert("No mobile number recorded for " + lead.full_name);
+      return;
+    }
+
+    const cleanNum = lead.mobile.replace(/\D/g, "");
+    const formattedNum = cleanNum.startsWith("91") && cleanNum.length === 12 ? cleanNum : cleanNum.length === 10 ? "91" + cleanNum : cleanNum;
+
+    const rawTemplate =
+      draftNumber === 1
+        ? (templates?.wa_draft_1 || "Hi {{fullName}}, I noticed you are exploring opportunities in {{jobRole}}...")
+        : draftNumber === 2
+        ? (templates?.wa_draft_2 || "Hi {{fullName}}, Still giving interviews the hard way?...")
+        : (templates?.wa_draft_3 || "Hi {{fullName}}, Quick check regarding your {{jobRole}} interview prep!...");
+
+    const personalized = rawTemplate
+      .replace(/{{fullName}}/g, lead.full_name || "there")
+      .replace(/{{jobRole}}/g, lead.job_role || "Software");
+
+    const waUrl = `https://wa.me/${formattedNum}?text=${encodeURIComponent(personalized)}`;
+    window.open(waUrl, "_blank");
+  };
+
+  // Filter leads by search query
+  const filteredLeads = leadsList.filter((l) => {
+    const q = searchQuery.toLowerCase();
+    return (
+      (l.full_name && l.full_name.toLowerCase().includes(q)) ||
+      (l.email && l.email.toLowerCase().includes(q)) ||
+      (l.job_role && l.job_role.toLowerCase().includes(q)) ||
+      (l.mobile && l.mobile.includes(q)) ||
+      String(l.id).includes(q)
+    );
+  });
 
   if (!isAuthenticated) {
     return (
@@ -273,467 +383,750 @@ export default function AdminPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", color: "#0f172a", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", padding: "24px 16px" }}>
-      <div style={{ maxWidth: 940, margin: "0 auto" }}>
+    <div style={{ minHeight: "100vh", background: "#f8fafc", color: "#0f172a", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", padding: "20px 14px" }}>
+      <div style={{ maxWidth: 1040, margin: "0 auto" }}>
         
         {/* Top Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
           <div>
-            <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0, color: "#0f172a" }}>MetaPilot Outreach Automation</h1>
-            <p style={{ margin: "4px 0 0 0", color: "#64748b", fontSize: 14 }}>
-              100% Human HR Format (Primary Inbox) &bull; Auto Round-Robin A &rarr; B &rarr; C
+            <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: "#0f172a" }}>MetaPilot Outreach &amp; CRM Hub</h1>
+            <p style={{ margin: "3px 0 0 0", color: "#64748b", fontSize: 13 }}>
+              Natural HR 1-on-1 Deliverability &bull; Smart Cyclic Rotation A &rarr; B &rarr; C &bull; 1-Click WhatsApp
             </p>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={() => { fetchStats(); fetchLeads(); }}
               disabled={loadingStats}
-              style={{ padding: "8px 16px", background: "#e2e8f0", color: "#1e293b", border: "none", borderRadius: 6, fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+              style={{ padding: "8px 14px", background: "#e2e8f0", color: "#1e293b", border: "none", borderRadius: 6, fontWeight: 600, fontSize: 12, cursor: "pointer" }}
             >
               {loadingStats ? "Refreshing..." : "🔄 Refresh"}
             </button>
             <button
               onClick={handleLogout}
-              style={{ padding: "8px 16px", background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+              style={{ padding: "8px 14px", background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, fontWeight: 600, fontSize: 12, cursor: "pointer" }}
             >
               Log Out
             </button>
           </div>
         </div>
 
-        {/* Live Stats Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 24 }}>
-          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 16 }}>
-            <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Total Leads</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: "#0f172a", marginTop: 4 }}>{stats ? stats.totalLeads : "--"}</div>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-              IDs: {stats?.minLeadId || 1} to {stats?.maxLeadId || "--"}
-            </div>
-          </div>
-
-          <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: 16 }}>
-            <div style={{ fontSize: 12, color: "#065f46", fontWeight: 700, textTransform: "uppercase" }}>Mail 1 (Initial)</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: "#047857", marginTop: 4 }}>{stats ? stats.mail1Sent : "--"}</div>
-            <div style={{ fontSize: 12, color: "#059669", marginTop: 2 }}>Sent &bull; {stats ? stats.mail1Pending : "--"} Ready</div>
-          </div>
-
-          <div style={{ background: "#faf5ff", border: "1px solid #d8b4fe", borderRadius: 10, padding: 16 }}>
-            <div style={{ fontSize: 12, color: "#6d28d9", fontWeight: 700, textTransform: "uppercase" }}>Mail 2 (Follow-up)</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: "#7c3aed", marginTop: 4 }}>{stats ? stats.mail2Sent : "--"}</div>
-            <div style={{ fontSize: 12, color: "#8b5cf6", marginTop: 2 }}>Sent &bull; {stats ? stats.mail2Pending : "--"} Ready</div>
-          </div>
-
-          <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: 16 }}>
-            <div style={{ fontSize: 12, color: "#92400e", fontWeight: 700, textTransform: "uppercase" }}>Mail 3 (Final Call)</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: "#b45309", marginTop: 4 }}>{stats ? stats.mail3Sent : "--"}</div>
-            <div style={{ fontSize: 12, color: "#d97706", marginTop: 2 }}>Sent &bull; {stats ? stats.mail3Pending : "--"} Ready</div>
-          </div>
-        </div>
-
-        {/* Section 1: 🚀 Smart Campaign Dispatcher */}
-        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#0f172a" }}>🚀 1-Click Campaign Dispatcher</h2>
-            <span style={{ fontSize: 12, padding: "4px 8px", background: "#ecfdf5", color: "#065f46", borderRadius: 4, fontWeight: 700 }}>
-              Auto Shuffling: 1st=A, 2nd=B, 3rd=C, 4th=A...
-            </span>
-          </div>
-          <p style={{ margin: "0 0 20px 0", fontSize: 13, color: "#64748b" }}>
-            The system automatically alternates templates (A &rarr; B &rarr; C) across leads for Mail 1, and follows the strict cyclic follow-up rotation (A &rarr; B &rarr; C &rarr; A).
-          </p>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 20 }}>
-            {/* Batch Size */}
-            <div>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Batch Size:</label>
-              <select
-                value={batchPreset}
-                onChange={(e) => setBatchPreset(e.target.value)}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 14, background: "#f8fafc" }}
-              >
-                <option value="10">10 Leads</option>
-                <option value="20">20 Leads</option>
-                <option value="25">25 Leads</option>
-                <option value="50">50 Leads (Recommended)</option>
-                <option value="100">100 Leads</option>
-                <option value="custom">Custom Limit...</option>
-              </select>
-              {batchPreset === "custom" && (
-                <input
-                  type="number"
-                  placeholder="e.g. 300"
-                  value={customBatchSize}
-                  onChange={(e) => setCustomBatchSize(e.target.value)}
-                  style={{ width: "100%", marginTop: 8, padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
-                />
-              )}
-            </div>
-
-            {/* Range: From ID to To ID */}
-            <div>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Lead ID Range (Optional):</label>
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <input
-                  type="number"
-                  placeholder="From ID (e.g. 3056)"
-                  value={startId}
-                  onChange={(e) => setStartId(e.target.value)}
-                  style={{ width: "50%", padding: "10px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, boxSizing: "border-box" }}
-                />
-                <span style={{ color: "#94a3b8" }}>&rarr;</span>
-                <input
-                  type="number"
-                  placeholder="To ID (e.g. 3112)"
-                  value={endId}
-                  onChange={(e) => setEndId(e.target.value)}
-                  style={{ width: "50%", padding: "10px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, boxSizing: "border-box" }}
-                />
-              </div>
-              <span style={{ fontSize: 11, color: "#64748b" }}>Leave blank to automatically send to the next pending leads.</span>
-            </div>
-
-            {/* Delay between Emails */}
-            <div>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Delay between Mails:</label>
-              <select
-                value={delayPreset}
-                onChange={(e) => setDelayPreset(e.target.value)}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 14, background: "#f8fafc" }}
-              >
-                <option value="2">2 seconds (Standard)</option>
-                <option value="5">5 seconds</option>
-                <option value="30">30 seconds</option>
-                <option value="60">1 minute (Safe warmup)</option>
-                <option value="300">5 minutes</option>
-                <option value="900">15 minutes (Periodic)</option>
-                <option value="custom">Custom Time Gap...</option>
-              </select>
-              {delayPreset === "custom" && (
-                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                  <input
-                    type="number"
-                    placeholder="e.g. 15"
-                    value={customDelay}
-                    onChange={(e) => setCustomDelay(e.target.value)}
-                    style={{ width: "60%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14 }}
-                  />
-                  <select
-                    value={delayUnit}
-                    onChange={(e) => setDelayUnit(e.target.value)}
-                    style={{ width: "40%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14 }}
-                  >
-                    <option value="sec">Seconds</option>
-                    <option value="min">Minutes</option>
-                  </select>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div style={{ background: "#f8fafc", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13, color: "#475569", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-            <div>Target: <strong>{activeLimit} Leads</strong> {startId && endId ? `(IDs: ${startId} to ${endId})` : ""}</div>
-            <div>Gap: <strong>{activeDelaySec}s</strong> per email</div>
-            <div>Est. Batch Duration: <strong style={{ color: "#2563eb" }}>~{estimatedTimeText()}</strong></div>
-          </div>
-
+        {/* Tab Navigation */}
+        <div style={{ display: "flex", gap: 8, borderBottom: "2px solid #e2e8f0", marginBottom: 20, overflowX: "auto" }}>
           <button
-            onClick={handleSendBatch}
-            disabled={sendingBatch}
+            onClick={() => setActiveTab("campaign")}
             style={{
-              width: "100%",
-              padding: 16,
-              background: sendingBatch ? "#94a3b8" : "#2563eb",
-              color: "#fff",
+              padding: "10px 18px",
+              background: activeTab === "campaign" ? "#2563eb" : "transparent",
+              color: activeTab === "campaign" ? "#fff" : "#475569",
               border: "none",
-              borderRadius: 8,
-              fontSize: 16,
-              fontWeight: 800,
-              cursor: sendingBatch ? "not-allowed" : "pointer",
-              boxShadow: "0 4px 12px rgba(37,99,235,0.2)",
+              borderRadius: "8px 8px 0 0",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: "pointer",
             }}
           >
-            {sendingBatch ? `⏳ Running Campaign Batch (${activeLimit} leads, please wait)...` : `🚀 Start Campaign Batch (${activeLimit} Leads)`}
+            🚀 Outreach Campaigns
           </button>
+          <button
+            onClick={() => setActiveTab("leads")}
+            style={{
+              padding: "10px 18px",
+              background: activeTab === "leads" ? "#2563eb" : "transparent",
+              color: activeTab === "leads" ? "#fff" : "#475569",
+              border: "none",
+              borderRadius: "8px 8px 0 0",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+          >
+            📋 Leads &amp; 💬 WhatsApp ({leadsList.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("import")}
+            style={{
+              padding: "10px 18px",
+              background: activeTab === "import" ? "#2563eb" : "transparent",
+              color: activeTab === "import" ? "#fff" : "#475569",
+              border: "none",
+              borderRadius: "8px 8px 0 0",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+          >
+            📥 Import &amp; Deduplicate Leads
+          </button>
+          <button
+            onClick={() => setActiveTab("templates")}
+            style={{
+              padding: "10px 18px",
+              background: activeTab === "templates" ? "#2563eb" : "transparent",
+              color: activeTab === "templates" ? "#fff" : "#475569",
+              border: "none",
+              borderRadius: "8px 8px 0 0",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+          >
+            📝 Content &amp; Templates Editor
+          </button>
+        </div>
 
-          {/* Batch Result Report */}
-          {batchResult && (
-            <div style={{ marginTop: 20, padding: 16, borderRadius: 8, background: batchResult.success ? "#f0fdf4" : "#fef2f2", border: `1px solid ${batchResult.success ? "#bbf7d0" : "#fecaca"}` }}>
-              <div style={{ fontWeight: 700, color: batchResult.success ? "#166534" : "#991b1b", fontSize: 14 }}>
-                {batchResult.success ? `✔ Campaign Completed! Successfully Sent: ${batchResult.sent} / ${batchResult.total} leads` : `❌ Error: ${batchResult.error}`}
+        {/* Live Stats Bar */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 20 }}>
+          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Total Leads</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>{stats ? stats.totalLeads : "--"}</div>
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>IDs: {stats?.minLeadId || 1} to {stats?.maxLeadId || "--"}</div>
+          </div>
+
+          <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 11, color: "#065f46", fontWeight: 700, textTransform: "uppercase" }}>Mail 1 (Initial)</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#047857", marginTop: 2 }}>{stats ? stats.mail1Sent : "--"}</div>
+            <div style={{ fontSize: 11, color: "#059669", marginTop: 2 }}>Sent &bull; {stats ? stats.mail1Pending : "--"} Pending</div>
+          </div>
+
+          <div style={{ background: "#faf5ff", border: "1px solid #d8b4fe", borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 11, color: "#6d28d9", fontWeight: 700, textTransform: "uppercase" }}>Mail 2 (Follow-up)</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#7c3aed", marginTop: 2 }}>{stats ? stats.mail2Sent : "--"}</div>
+            <div style={{ fontSize: 11, color: "#8b5cf6", marginTop: 2 }}>Sent &bull; {stats ? stats.mail2Pending : "--"} Ready</div>
+          </div>
+
+          <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 11, color: "#92400e", fontWeight: 700, textTransform: "uppercase" }}>Mail 3 (Final Call)</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#b45309", marginTop: 2 }}>{stats ? stats.mail3Sent : "--"}</div>
+            <div style={{ fontSize: 11, color: "#d97706", marginTop: 2 }}>Sent &bull; {stats ? stats.mail3Pending : "--"} Ready</div>
+          </div>
+        </div>
+
+        {/* =================================================================== */}
+        {/* TAB 1: 🚀 OUTREACH CAMPAIGNS */}
+        {/* =================================================================== */}
+        {activeTab === "campaign" && (
+          <div>
+            <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#0f172a" }}>🚀 1-Click Campaign Dispatcher</h2>
+                <span style={{ fontSize: 12, padding: "4px 8px", background: "#ecfdf5", color: "#065f46", borderRadius: 4, fontWeight: 700 }}>
+                  Auto Shuffling: 1st=A, 2nd=B, 3rd=C, 4th=A...
+                </span>
               </div>
-              {batchResult.results && batchResult.results.length > 0 && (
-                <div style={{ marginTop: 12, maxHeight: 220, overflowY: "auto", fontSize: 12, color: "#334155" }}>
-                  {batchResult.results.map((r, i) => (
-                    <div key={i} style={{ padding: "4px 0", borderBottom: "1px dashed #e2e8f0", display: "flex", justifyContent: "space-between" }}>
-                      <span>
-                        {r.status === "sent" ? "✅" : "⚠️"} [ID {r.id}] {r.name} ({r.email})
-                      </span>
-                      <span style={{ fontWeight: 600, color: "#2563eb" }}>
-                        Mail {r.slot} &bull; Template {r.template}
-                      </span>
+              <p style={{ margin: "0 0 20px 0", fontSize: 13, color: "#64748b" }}>
+                The system automatically rotates templates (A &rarr; B &rarr; C) across leads for Mail 1, and follows the strict cyclic follow-up rotation (A &rarr; B &rarr; C &rarr; A).
+              </p>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 20 }}>
+                {/* Batch Size */}
+                <div>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Batch Size:</label>
+                  <select
+                    value={batchPreset}
+                    onChange={(e) => setBatchPreset(e.target.value)}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 14, background: "#f8fafc" }}
+                  >
+                    <option value="10">10 Leads</option>
+                    <option value="20">20 Leads</option>
+                    <option value="25">25 Leads</option>
+                    <option value="50">50 Leads (Recommended)</option>
+                    <option value="100">100 Leads</option>
+                    <option value="custom">Custom Limit...</option>
+                  </select>
+                  {batchPreset === "custom" && (
+                    <input
+                      type="number"
+                      placeholder="Type custom number (e.g. 300)"
+                      value={customBatchSize}
+                      onChange={(e) => setCustomBatchSize(e.target.value)}
+                      style={{ width: "100%", marginTop: 8, padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
+                    />
+                  )}
+                </div>
+
+                {/* Range: From ID to To ID */}
+                <div>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Lead ID Range (Optional):</label>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type="number"
+                      placeholder="From (e.g. 3056)"
+                      value={startId}
+                      onChange={(e) => setStartId(e.target.value)}
+                      style={{ width: "50%", padding: "10px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, boxSizing: "border-box" }}
+                    />
+                    <span style={{ color: "#94a3b8" }}>&rarr;</span>
+                    <input
+                      type="number"
+                      placeholder="To (e.g. 3112)"
+                      value={endId}
+                      onChange={(e) => setEndId(e.target.value)}
+                      style={{ width: "50%", padding: "10px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, boxSizing: "border-box" }}
+                    />
+                  </div>
+                  <span style={{ fontSize: 11, color: "#64748b" }}>Leave blank to automatically send to the next pending leads.</span>
+                </div>
+
+                {/* Delay between Emails */}
+                <div>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Delay between Mails:</label>
+                  <select
+                    value={delayPreset}
+                    onChange={(e) => setDelayPreset(e.target.value)}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 14, background: "#f8fafc" }}
+                  >
+                    <option value="2">2 seconds (Fast)</option>
+                    <option value="5">5 seconds</option>
+                    <option value="30">30 seconds</option>
+                    <option value="60">1 minute (Safe)</option>
+                    <option value="300">5 minutes</option>
+                    <option value="900">15 minutes (Periodic)</option>
+                    <option value="custom">Custom Time Gap...</option>
+                  </select>
+                  {delayPreset === "custom" && (
+                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                      <input
+                        type="number"
+                        placeholder="e.g. 15"
+                        value={customDelay}
+                        onChange={(e) => setCustomDelay(e.target.value)}
+                        style={{ width: "60%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14 }}
+                      />
+                      <select
+                        value={delayUnit}
+                        onChange={(e) => setDelayUnit(e.target.value)}
+                        style={{ width: "40%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14 }}
+                      >
+                        <option value="sec">Seconds</option>
+                        <option value="min">Minutes</option>
+                      </select>
                     </div>
-                  ))}
+                  )}
+                </div>
+              </div>
+
+              <div style={{ background: "#f8fafc", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13, color: "#475569", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <div>Target: <strong>{activeLimit} Leads</strong> {startId && endId ? `(IDs: ${startId} to ${endId})` : ""}</div>
+                <div>Delay: <strong>{activeDelaySec}s</strong> gap</div>
+                <div>Est. Completion Time: <strong style={{ color: "#2563eb" }}>~{estimatedTimeText()}</strong></div>
+              </div>
+
+              <button
+                onClick={handleSendBatch}
+                disabled={sendingBatch}
+                style={{
+                  width: "100%",
+                  padding: 16,
+                  background: sendingBatch ? "#94a3b8" : "#2563eb",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 16,
+                  fontWeight: 800,
+                  cursor: sendingBatch ? "not-allowed" : "pointer",
+                  boxShadow: "0 4px 12px rgba(37,99,235,0.2)",
+                }}
+              >
+                {sendingBatch ? `⏳ Running Campaign Batch (${activeLimit} leads, please wait)...` : `🚀 Start Campaign Batch (${activeLimit} Leads)`}
+              </button>
+
+              {/* Batch Result Report */}
+              {batchResult && (
+                <div style={{ marginTop: 20, padding: 16, borderRadius: 8, background: batchResult.success ? "#f0fdf4" : "#fef2f2", border: `1px solid ${batchResult.success ? "#bbf7d0" : "#fecaca"}` }}>
+                  <div style={{ fontWeight: 700, color: batchResult.success ? "#166534" : "#991b1b", fontSize: 14 }}>
+                    {batchResult.success ? `✔ Campaign Completed! Successfully Sent: ${batchResult.sent} / ${batchResult.total} leads` : `❌ Error: ${batchResult.error}`}
+                  </div>
+                  {batchResult.results && batchResult.results.length > 0 && (
+                    <div style={{ marginTop: 12, maxHeight: 220, overflowY: "auto", fontSize: 12, color: "#334155" }}>
+                      {batchResult.results.map((r, i) => (
+                        <div key={i} style={{ padding: "4px 0", borderBottom: "1px dashed #e2e8f0", display: "flex", justifyContent: "space-between" }}>
+                          <span>
+                            {r.status === "sent" ? "✅" : "⚠️"} [ID {r.id}] {r.name} ({r.email})
+                          </span>
+                          <span style={{ fontWeight: 600, color: "#2563eb" }}>
+                            Mail {r.slot} &bull; Template {r.template}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
 
-        {/* Section 2: 📥 Paste & Clean Raw Lead List */}
-        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>📥 Paste Raw Email List &bull; Automatic Deduplication</h2>
-          <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#64748b" }}>
-            Paste any raw list of email IDs (e.g. from Excel, CSV, or text). The system will automatically extract emails, count them, eliminate duplicates, and check against Supabase.
-          </p>
+            {/* Test Email Box */}
+            <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+              <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>🧪 Test Email in Your Own Inbox</h2>
+              <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#64748b" }}>
+                Verify how the natural human HR format looks in your Gmail Primary inbox right now.
+              </p>
 
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 6 }}>
-              Paste Raw Emails / CSV Text:
-            </label>
-            <textarea
-              rows={5}
-              value={rawText}
-              onChange={(e) => { setRawText(e.target.value); setImportPreview(null); }}
-              placeholder="Paste raw data here... e.g.&#10;rahul@gmail.com&#10;Priya Sharma, priya@yahoo.com, Java Developer&#10;amit@outlook.com, 9876543210"
-              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "monospace", boxSizing: "border-box" }}
-            />
-          </div>
+              <form onSubmit={handleSendTest}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 16 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 4 }}>Your Email Address:</label>
+                    <input
+                      type="email"
+                      value={testEmail}
+                      onChange={(e) => setTestEmail(e.target.value)}
+                      placeholder="e.g. hrishikeshmore225@gmail.com"
+                      required
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
+                    />
+                  </div>
 
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ minWidth: 200 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 4 }}>Default Job Role:</label>
-              <input
-                type="text"
-                value={defaultRole}
-                onChange={(e) => setDefaultRole(e.target.value)}
-                style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13 }}
-              />
-            </div>
-            <button
-              onClick={handleCheckDuplicates}
-              disabled={importing || !rawText.trim()}
-              style={{
-                marginTop: 18,
-                padding: "10px 18px",
-                background: "#f1f5f9",
-                color: "#1e293b",
-                border: "1px solid #cbd5e1",
-                borderRadius: 6,
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              {importing ? "Scanning..." : "🔍 Scan & Check Duplicates"}
-            </button>
-          </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 4 }}>Candidate Name:</label>
+                    <input
+                      type="text"
+                      value={testName}
+                      onChange={(e) => setTestName(e.target.value)}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
+                    />
+                  </div>
 
-          {/* Import Preview Box */}
-          {importPreview && (
-            <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, padding: 16, marginBottom: 16 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", marginBottom: 10 }}>📊 Scan Audit Report:</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
-                <div style={{ background: "#fff", padding: 10, borderRadius: 6, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 11, color: "#64748b" }}>Total Found</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>{importPreview.totalExtracted}</div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 4 }}>Target Job Role:</label>
+                    <input
+                      type="text"
+                      value={testRole}
+                      onChange={(e) => setTestRole(e.target.value)}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 4 }}>Template:</label>
+                    <select
+                      value={testTemplate}
+                      onChange={(e) => setTestTemplate(e.target.value)}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, background: "#fff", boxSizing: "border-box" }}
+                    >
+                      <option value="A">Template A (Initial Outreach - Human)</option>
+                      <option value="B">Template B (Follow-up - Clean Text)</option>
+                      <option value="C">Template C (Final Note - Invitation)</option>
+                    </select>
+                  </div>
                 </div>
-                <div style={{ background: "#fff", padding: 10, borderRadius: 6, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 11, color: "#64748b" }}>Duplicates in Paste</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: "#dc2626" }}>{importPreview.internalDuplicatesCount}</div>
-                </div>
-                <div style={{ background: "#fff", padding: 10, borderRadius: 6, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 11, color: "#64748b" }}>Already in DB</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: "#d97706" }}>{importPreview.alreadyInDbCount}</div>
-                </div>
-                <div style={{ background: "#ecfdf5", padding: 10, borderRadius: 6, border: "1px solid #a7f3d0" }}>
-                  <div style={{ fontSize: 11, color: "#065f46" }}>New Clean Leads</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: "#059669" }}>{importPreview.newCleanCount}</div>
-                </div>
-              </div>
 
-              {importPreview.newCleanCount > 0 ? (
                 <button
-                  onClick={handleSaveCleanLeads}
-                  disabled={importing}
+                  type="submit"
+                  disabled={sendingTest}
                   style={{
                     padding: "12px 24px",
-                    background: "#16a34a",
+                    background: sendingTest ? "#94a3b8" : "#2563eb",
                     color: "#fff",
                     border: "none",
                     borderRadius: 6,
                     fontSize: 14,
                     fontWeight: 700,
-                    cursor: "pointer",
+                    cursor: sendingTest ? "not-allowed" : "pointer",
                   }}
                 >
-                  {importing ? "Saving..." : `💾 Save ${importPreview.newCleanCount} Clean Leads to Database`}
+                  {sendingTest ? "Sending Test Email..." : "✉ Send Test Email to My Inbox"}
                 </button>
-              ) : (
-                <div style={{ color: "#d97706", fontSize: 13, fontWeight: 600 }}>
-                  ⚠️ All emails in this paste are duplicates or already present in your database!
+              </form>
+
+              {testResult && (
+                <div style={{ marginTop: 16, padding: 14, borderRadius: 8, background: testResult.success ? "#ecfdf5" : "#fef2f2", border: `1px solid ${testResult.success ? "#a7f3d0" : "#fecaca"}` }}>
+                  <div style={{ fontWeight: 700, color: testResult.success ? "#065f46" : "#991b1b", fontSize: 13 }}>
+                    {testResult.success ? `✔ ${testResult.message}` : `❌ Failed: ${testResult.error}`}
+                  </div>
+                  {testResult.subject && <div style={{ fontSize: 12, color: "#047857", marginTop: 4 }}>Subject: <strong>{testResult.subject}</strong></div>}
                 </div>
               )}
             </div>
-          )}
-
-          {importMessage && (
-            <div style={{ padding: 12, borderRadius: 6, background: "#ecfdf5", color: "#065f46", fontSize: 13, fontWeight: 700 }}>
-              {importMessage}
-            </div>
-          )}
-        </div>
-
-        {/* Section 3: 🧪 Test Email in Your Own Inbox */}
-        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>🧪 Test Email in Your Own Inbox</h2>
-          <p style={{ margin: "0 0 18px 0", fontSize: 13, color: "#64748b" }}>
-            Verify how the natural human HR format looks in your Gmail Primary inbox right now.
-          </p>
-
-          <form onSubmit={handleSendTest}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 16 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 4 }}>Your Email Address:</label>
-                <input
-                  type="email"
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  placeholder="e.g. hrishikeshmore225@gmail.com"
-                  required
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 4 }}>Candidate Name:</label>
-                <input
-                  type="text"
-                  value={testName}
-                  onChange={(e) => setTestName(e.target.value)}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 4 }}>Target Job Role:</label>
-                <input
-                  type="text"
-                  value={testRole}
-                  onChange={(e) => setTestRole(e.target.value)}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, boxSizing: "border-box" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 4 }}>Template:</label>
-                <select
-                  value={testTemplate}
-                  onChange={(e) => setTestTemplate(e.target.value)}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, background: "#fff", boxSizing: "border-box" }}
-                >
-                  <option value="A">Template A (Initial Outreach - Human)</option>
-                  <option value="B">Template B (Follow-up - Clean Text)</option>
-                  <option value="C">Template C (Final Note - Invitation)</option>
-                </select>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={sendingTest}
-              style={{
-                padding: "12px 24px",
-                background: sendingTest ? "#94a3b8" : "#2563eb",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                fontSize: 14,
-                fontWeight: 700,
-                cursor: sendingTest ? "not-allowed" : "pointer",
-              }}
-            >
-              {sendingTest ? "Sending Test Email..." : "✉ Send Test Email to My Inbox"}
-            </button>
-          </form>
-
-          {testResult && (
-            <div style={{ marginTop: 16, padding: 14, borderRadius: 8, background: testResult.success ? "#ecfdf5" : "#fef2f2", border: `1px solid ${testResult.success ? "#a7f3d0" : "#fecaca"}` }}>
-              <div style={{ fontWeight: 700, color: testResult.success ? "#065f46" : "#991b1b", fontSize: 13 }}>
-                {testResult.success ? `✔ ${testResult.message}` : `❌ Failed: ${testResult.error}`}
-              </div>
-              {testResult.subject && <div style={{ fontSize: 12, color: "#047857", marginTop: 4 }}>Subject: <strong>{testResult.subject}</strong></div>}
-            </div>
-          )}
-        </div>
-
-        {/* Section 4: 📋 Lead Database Live View */}
-        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#0f172a" }}>📋 Database Leads &amp; Delivery Status</h2>
-            <span style={{ fontSize: 12, color: "#64748b" }}>Showing recent 50 leads</span>
           </div>
+        )}
 
-          <div style={{ overflowX: "auto" }}>
-            <table width="100%" cellPadding={8} cellSpacing={0} style={{ borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
-              <thead>
-                <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0", color: "#475569" }}>
-                  <th style={{ padding: "8px 10px" }}>ID</th>
-                  <th style={{ padding: "8px 10px" }}>Name</th>
-                  <th style={{ padding: "8px 10px" }}>Email</th>
-                  <th style={{ padding: "8px 10px" }}>Job Role</th>
-                  <th style={{ padding: "8px 10px" }}>Mail 1</th>
-                  <th style={{ padding: "8px 10px" }}>Mail 2</th>
-                  <th style={{ padding: "8px 10px" }}>Mail 3</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leadsList.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: "center", padding: 24, color: "#94a3b8" }}>
-                      No leads in database yet. Paste your email list in Section 2 above to import!
-                    </td>
+        {/* =================================================================== */}
+        {/* TAB 2: 📋 LEADS & 💬 WHATSAPP */}
+        {/* =================================================================== */}
+        {activeTab === "leads" && (
+          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+              <div>
+                <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#0f172a" }}>📋 Database Leads &amp; Direct WhatsApp</h2>
+                <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "#64748b" }}>
+                  Tap the WhatsApp button next to any lead to send pre-filled messages directly to their phone!
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="🔍 Search name, email, role, phone..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minWidth: 240 }}
+                />
+                <button
+                  onClick={handleClearAllLeads}
+                  disabled={clearingLeads}
+                  style={{
+                    padding: "8px 12px",
+                    background: "#fef2f2",
+                    color: "#b91c1c",
+                    border: "1px solid #fecaca",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {clearingLeads ? "Clearing..." : "🗑️ Clear All Leads"}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ overflowX: "auto" }}>
+              <table width="100%" cellPadding={8} cellSpacing={0} style={{ borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0", color: "#475569" }}>
+                    <th style={{ padding: "8px 10px" }}>ID</th>
+                    <th style={{ padding: "8px 10px" }}>Candidate Name</th>
+                    <th style={{ padding: "8px 10px" }}>Email</th>
+                    <th style={{ padding: "8px 10px" }}>Mobile &amp; WhatsApp</th>
+                    <th style={{ padding: "8px 10px" }}>Job Role</th>
+                    <th style={{ padding: "8px 10px" }}>Exp / Notice</th>
+                    <th style={{ padding: "8px 10px" }}>Mail 1</th>
+                    <th style={{ padding: "8px 10px" }}>Mail 2</th>
+                    <th style={{ padding: "8px 10px" }}>Mail 3</th>
                   </tr>
-                ) : (
-                  leadsList.map((lead) => (
-                    <tr key={lead.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                      <td style={{ padding: "8px 10px", fontWeight: 700, color: "#0f172a" }}>{lead.id}</td>
-                      <td style={{ padding: "8px 10px", color: "#1e293b" }}>{lead.full_name || "--"}</td>
-                      <td style={{ padding: "8px 10px", color: "#2563eb" }}>{lead.email}</td>
-                      <td style={{ padding: "8px 10px", color: "#64748b" }}>{lead.job_role || "--"}</td>
-                      <td style={{ padding: "8px 10px" }}>
-                        {lead.mail_1_status ? (
-                          <span style={{ background: "#dcfce7", color: "#166534", padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                            {lead.mail_1_status}
-                          </span>
-                        ) : (
-                          <span style={{ color: "#94a3b8", fontSize: 11 }}>Pending</span>
-                        )}
-                      </td>
-                      <td style={{ padding: "8px 10px" }}>
-                        {lead.mail_2_status ? (
-                          <span style={{ background: "#f3e8ff", color: "#6b21a8", padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                            {lead.mail_2_status}
-                          </span>
-                        ) : (
-                          <span style={{ color: "#94a3b8", fontSize: 11 }}>--</span>
-                        )}
-                      </td>
-                      <td style={{ padding: "8px 10px" }}>
-                        {lead.mail_3_status ? (
-                          <span style={{ background: "#fef3c7", color: "#92400e", padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                            {lead.mail_3_status}
-                          </span>
-                        ) : (
-                          <span style={{ color: "#94a3b8", fontSize: 11 }}>--</span>
-                        )}
+                </thead>
+                <tbody>
+                  {filteredLeads.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>
+                        {searchQuery ? "No matching leads found." : "No leads in database yet. Go to 'Import Leads' tab above to import your sheet data!"}
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    filteredLeads.map((lead) => (
+                      <tr key={lead.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                        <td style={{ padding: "8px 10px", fontWeight: 700, color: "#0f172a" }}>{lead.id}</td>
+                        <td style={{ padding: "8px 10px", fontWeight: 600, color: "#1e293b" }}>{lead.full_name || "--"}</td>
+                        <td style={{ padding: "8px 10px", color: "#2563eb" }}>{lead.email}</td>
+                        <td style={{ padding: "8px 10px" }}>
+                          {lead.mobile ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontFamily: "monospace", fontSize: 12 }}>{lead.mobile}</span>
+                              <div style={{ display: "inline-flex", gap: 3 }}>
+                                <button
+                                  onClick={() => openWhatsApp(lead, 1)}
+                                  title="Send WhatsApp Draft 1"
+                                  style={{ background: "#25D366", color: "#fff", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                                >
+                                  💬 D1
+                                </button>
+                                <button
+                                  onClick={() => openWhatsApp(lead, 2)}
+                                  title="Send WhatsApp Draft 2"
+                                  style={{ background: "#128C7E", color: "#fff", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                                >
+                                  D2
+                                </button>
+                                <button
+                                  onClick={() => openWhatsApp(lead, 3)}
+                                  title="Send WhatsApp Draft 3"
+                                  style={{ background: "#075E54", color: "#fff", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                                >
+                                  D3
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{ color: "#94a3b8", fontSize: 11 }}>No Mobile</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "8px 10px", color: "#0f172a", fontWeight: 500 }}>{lead.job_role || "--"}</td>
+                        <td style={{ padding: "8px 10px", color: "#64748b", fontSize: 12 }}>
+                          {lead.years_of_experience || ""} {lead.notice_period ? `(${lead.notice_period})` : ""}
+                        </td>
+                        <td style={{ padding: "8px 10px" }}>
+                          {lead.mail_1_status ? (
+                            <span style={{ background: "#dcfce7", color: "#166534", padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                              {lead.mail_1_status}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#94a3b8", fontSize: 11 }}>Pending</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "8px 10px" }}>
+                          {lead.mail_2_status ? (
+                            <span style={{ background: "#f3e8ff", color: "#6b21a8", padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                              {lead.mail_2_status}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#94a3b8", fontSize: 11 }}>--</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "8px 10px" }}>
+                          {lead.mail_3_status ? (
+                            <span style={{ background: "#fef3c7", color: "#92400e", padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                              {lead.mail_3_status}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#94a3b8", fontSize: 11 }}>--</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* =================================================================== */}
+        {/* TAB 3: 📥 IMPORT & DEDUPLICATE LEADS */}
+        {/* =================================================================== */}
+        {activeTab === "import" && (
+          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>📥 Paste Excel / TSV / Sheet Data &bull; Smart Header Detection</h2>
+            <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#64748b" }}>
+              Copy directly from Google Sheets or Excel (including headers like <code>Full_Name</code>, <code>Email_ID</code>, <code>Mobile_Number</code>, <code>Job_Role</code>) and paste below. The system maps each column accurately and eliminates duplicates.
+            </p>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 6 }}>
+                Paste Sheet or Raw Data Here:
+              </label>
+              <textarea
+                rows={8}
+                value={rawText}
+                onChange={(e) => { setRawText(e.target.value); setImportPreview(null); }}
+                placeholder="Lead_ID	Full_Name	Email_ID	Mobile_Number	Job_Role	Years_of_Experience	Notice_Period&#10;1	Vaishnavi Borkar	vaishnaviborkar03@gmail.com	919130972967	Software Testing	4y 5m	15 Days or less"
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "monospace", boxSizing: "border-box" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ minWidth: 200 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 4 }}>Default Job Role (if missing in data):</label>
+                <input
+                  type="text"
+                  value={defaultRole}
+                  onChange={(e) => setDefaultRole(e.target.value)}
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13 }}
+                />
+              </div>
+              <button
+                onClick={handleCheckDuplicates}
+                disabled={importing || !rawText.trim()}
+                style={{
+                  marginTop: 18,
+                  padding: "10px 20px",
+                  background: "#2563eb",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                {importing ? "Analyzing Columns..." : "🔍 Scan & Check Duplicates"}
+              </button>
+            </div>
+
+            {/* Import Preview Box */}
+            {importPreview && (
+              <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, padding: 16, marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", marginBottom: 10 }}>📊 Scan Audit Report:</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
+                  <div style={{ background: "#fff", padding: 10, borderRadius: 6, border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>Total Detected</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>{importPreview.totalExtracted}</div>
+                  </div>
+                  <div style={{ background: "#fff", padding: 10, borderRadius: 6, border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>Duplicates in Paste</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: "#dc2626" }}>{importPreview.internalDuplicatesCount}</div>
+                  </div>
+                  <div style={{ background: "#fff", padding: 10, borderRadius: 6, border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>Already in DB</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: "#d97706" }}>{importPreview.alreadyInDbCount}</div>
+                  </div>
+                  <div style={{ background: "#ecfdf5", padding: 10, borderRadius: 6, border: "1px solid #a7f3d0" }}>
+                    <div style={{ fontSize: 11, color: "#065f46" }}>Clean New Leads</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: "#059669" }}>{importPreview.newCleanCount}</div>
+                  </div>
+                </div>
+
+                {importPreview.sampleNew && importPreview.sampleNew.length > 0 && (
+                  <div style={{ marginBottom: 14, fontSize: 12, color: "#475569" }}>
+                    <strong>Sample parsed entry:</strong><br />
+                    Name: <code>{importPreview.sampleNew[0].full_name}</code> &bull; Email: <code>{importPreview.sampleNew[0].email}</code> &bull; Mobile: <code>{importPreview.sampleNew[0].mobile}</code> &bull; Role: <code>{importPreview.sampleNew[0].job_role}</code>
+                  </div>
+                )}
+
+                {importPreview.newCleanCount > 0 ? (
+                  <button
+                    onClick={handleSaveCleanLeads}
+                    disabled={importing}
+                    style={{
+                      padding: "12px 24px",
+                      background: "#16a34a",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {importing ? "Saving..." : `💾 Save ${importPreview.newCleanCount} Clean Leads to Database`}
+                  </button>
+                ) : (
+                  <div style={{ color: "#d97706", fontSize: 13, fontWeight: 600 }}>
+                    ⚠️ All emails in this paste are duplicates or already present in your database! (If you want to replace corrupted test data, use "Clear All Leads" under Leads tab).
+                  </div>
+                )}
+              </div>
+            )}
+
+            {importMessage && (
+              <div style={{ padding: 12, borderRadius: 6, background: "#ecfdf5", color: "#065f46", fontSize: 13, fontWeight: 700 }}>
+                {importMessage}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =================================================================== */}
+        {/* TAB 4: 📝 TEMPLATES & CONTENT EDITOR */}
+        {/* =================================================================== */}
+        {activeTab === "templates" && (
+          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+              <div>
+                <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#0f172a" }}>📝 Outreach &amp; WhatsApp Templates Editor</h2>
+                <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "#64748b" }}>
+                  Customize your 3 Email Templates and 3 WhatsApp Drafts. Use <code>{"{{fullName}}"}</code> and <code>{"{{jobRole}}"}</code> for automatic personalization!
+                </p>
+              </div>
+              <button
+                onClick={handleSaveTemplates}
+                disabled={savingTemplates || !templates}
+                style={{
+                  padding: "10px 20px",
+                  background: "#2563eb",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {savingTemplates ? "Saving..." : "💾 Save All Templates"}
+              </button>
+            </div>
+
+            {templatesSavedMsg && (
+              <div style={{ padding: 10, borderRadius: 6, background: "#ecfdf5", color: "#065f46", fontSize: 13, fontWeight: 700, marginBottom: 16 }}>
+                {templatesSavedMsg}
+              </div>
+            )}
+
+            {templates ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+                {/* Email Template A */}
+                <div style={{ background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px 0", color: "#1e293b" }}>✉️ Email Template A (Initial Outreach)</h3>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Subject:</label>
+                  <input
+                    type="text"
+                    value={templates.email_a_subject}
+                    onChange={(e) => setTemplates({ ...templates, email_a_subject: e.target.value })}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, marginBottom: 10, boxSizing: "border-box" }}
+                  />
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Email Body:</label>
+                  <textarea
+                    rows={6}
+                    value={templates.email_a_body}
+                    onChange={(e) => setTemplates({ ...templates, email_a_body: e.target.value })}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "sans-serif", boxSizing: "border-box" }}
+                  />
+                </div>
+
+                {/* Email Template B */}
+                <div style={{ background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px 0", color: "#1e293b" }}>✉️ Email Template B (Follow-up)</h3>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Subject:</label>
+                  <input
+                    type="text"
+                    value={templates.email_b_subject}
+                    onChange={(e) => setTemplates({ ...templates, email_b_subject: e.target.value })}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, marginBottom: 10, boxSizing: "border-box" }}
+                  />
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Email Body:</label>
+                  <textarea
+                    rows={6}
+                    value={templates.email_b_body}
+                    onChange={(e) => setTemplates({ ...templates, email_b_body: e.target.value })}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "sans-serif", boxSizing: "border-box" }}
+                  />
+                </div>
+
+                {/* Email Template C */}
+                <div style={{ background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px 0", color: "#1e293b" }}>✉️ Email Template C (Final Call)</h3>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Subject:</label>
+                  <input
+                    type="text"
+                    value={templates.email_c_subject}
+                    onChange={(e) => setTemplates({ ...templates, email_c_subject: e.target.value })}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, marginBottom: 10, boxSizing: "border-box" }}
+                  />
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Email Body:</label>
+                  <textarea
+                    rows={6}
+                    value={templates.email_c_body}
+                    onChange={(e) => setTemplates({ ...templates, email_c_body: e.target.value })}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "sans-serif", boxSizing: "border-box" }}
+                  />
+                </div>
+
+                {/* WhatsApp Draft 1 */}
+                <div style={{ background: "#f0fdf4", padding: 16, borderRadius: 8, border: "1px solid #bbf7d0" }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px 0", color: "#166534" }}>💬 WhatsApp Draft 1 (Features &amp; Demo Focus)</h3>
+                  <textarea
+                    rows={8}
+                    value={templates.wa_draft_1}
+                    onChange={(e) => setTemplates({ ...templates, wa_draft_1: e.target.value })}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "sans-serif", boxSizing: "border-box" }}
+                  />
+                </div>
+
+                {/* WhatsApp Draft 2 */}
+                <div style={{ background: "#f0fdf4", padding: 16, borderRadius: 8, border: "1px solid #bbf7d0" }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px 0", color: "#166534" }}>💬 WhatsApp Draft 2 (Still Giving Interviews the Hard Way?)</h3>
+                  <textarea
+                    rows={8}
+                    value={templates.wa_draft_2}
+                    onChange={(e) => setTemplates({ ...templates, wa_draft_2: e.target.value })}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "sans-serif", boxSizing: "border-box" }}
+                  />
+                </div>
+
+                {/* WhatsApp Draft 3 */}
+                <div style={{ background: "#f0fdf4", padding: 16, borderRadius: 8, border: "1px solid #bbf7d0" }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 10px 0", color: "#166534" }}>💬 WhatsApp Draft 3 (Quick Check &amp; Pass)</h3>
+                  <textarea
+                    rows={6}
+                    value={templates.wa_draft_3}
+                    onChange={(e) => setTemplates({ ...templates, wa_draft_3: e.target.value })}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "sans-serif", boxSizing: "border-box" }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div>Loading templates...</div>
+            )}
+          </div>
+        )}
 
       </div>
     </div>
