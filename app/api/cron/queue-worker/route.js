@@ -104,15 +104,33 @@ async function processQueue() {
     if (Date.now() - startTime > MAX_EXECUTION_MS) break;
     if (totalDispatched >= MAX_LEADS_PER_RUN) break;
 
+    // Helper to safely parse date in IST (+05:30) if timezone is missing
+    const parseISTDate = (dateInput) => {
+      if (!dateInput) return null;
+      if (dateInput instanceof Date) return dateInput;
+      const str = String(dateInput).trim();
+      if (str.includes("Z") || /[+-]\d{2}:?\d{2}$/.test(str)) {
+        return new Date(str);
+      }
+      const normalized = str.replace(" ", "T");
+      const [d, t] = normalized.split("T");
+      if (d && t) {
+        const tSec = t.length === 5 ? `${t}:00` : t;
+        return new Date(`${d}T${tSec}+05:30`);
+      }
+      return new Date(str);
+    };
+
     // If campaign is scheduled for a future time, check if scheduled time has arrived
     if (camp.scheduledStartTime) {
-      const scheduledMs = new Date(camp.scheduledStartTime).getTime();
+      const scheduledDate = parseISTDate(camp.scheduledStartTime);
+      const scheduledMs = scheduledDate ? scheduledDate.getTime() : NaN;
       if (!isNaN(scheduledMs) && scheduledMs > now.getTime()) {
         const remainingSec = Math.ceil((scheduledMs - now.getTime()) / 1000);
         report.waitingNextLead = {
           campaign: camp.name || camp.id,
           status: "scheduled",
-          scheduledStart: camp.scheduledStartTime,
+          scheduledStart: scheduledDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
           remainingSec,
         };
         continue; // Scheduled in the future, wait

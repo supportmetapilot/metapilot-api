@@ -2,6 +2,35 @@
 
 import { useState, useEffect } from "react";
 
+// IST Timezone Utilities
+function formatIST(dateVal, opts = {}) {
+  if (!dateVal) return "";
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return String(dateVal);
+    return d.toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      ...opts,
+    });
+  } catch (e) {
+    return String(dateVal);
+  }
+}
+
+function toISTIsoString(datetimeLocalValue) {
+  if (!datetimeLocalValue) return null;
+  const str = String(datetimeLocalValue).trim();
+  if (str.includes("Z") || /[+-]\d{2}:?\d{2}$/.test(str)) {
+    return new Date(str).toISOString();
+  }
+  const [d, t] = str.replace(" ", "T").split("T");
+  if (d && t) {
+    const tSec = t.length === 5 ? `${t}:00` : t;
+    return new Date(`${d}T${tSec}+05:30`).toISOString();
+  }
+  return new Date(str).toISOString();
+}
+
 export default function AdminPage() {
   const [pin, setPin] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -396,8 +425,9 @@ export default function AdminPage() {
     const rangeMsg = startId && endId ? ` for Lead ID range ${startId} to ${endId}` : ` for next ${activeLimit} leads`;
     const f1 = followup1Days ? parseInt(followup1Days, 10) : 3;
     const f2 = followup2Days ? parseInt(followup2Days, 10) : 7;
+    const scheduledISO = scheduledStartTime ? toISTIsoString(scheduledStartTime) : null;
     const startNotice = scheduledStartTime
-      ? `• Mail 1: Scheduled for ${new Date(scheduledStartTime).toLocaleString()}`
+      ? `• Mail 1: Scheduled for ${formatIST(scheduledISO)} (IST)`
       : `• Mail 1: Today (Day 0, round-robin A→B→C)`;
 
     const confirmSend = window.confirm(
@@ -420,7 +450,7 @@ export default function AdminPage() {
           delaySec: activeDelaySec,
           followup1Days: f1,
           followup2Days: f2,
-          scheduledStartTime: scheduledStartTime || null,
+          scheduledStartTime: scheduledISO,
           key: "metapilot2026",
         }),
       });
@@ -854,7 +884,7 @@ export default function AdminPage() {
               <div style={{ marginBottom: 18, background: "#f8fafc", padding: "12px 14px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
                   <label style={{ fontSize: 13, fontWeight: 700, color: "#334155", margin: 0 }}>
-                    ⏰ Campaign Start Date &amp; Time for Mail 1 (Optional):
+                    ⏰ Campaign Start Date &amp; Time for Mail 1 (IST):
                   </label>
                   {scheduledStartTime && (
                     <button
@@ -875,7 +905,7 @@ export default function AdminPage() {
                   />
                   <span style={{ fontSize: 12, color: scheduledStartTime ? "#2563eb" : "#64748b", fontWeight: scheduledStartTime ? 700 : 400 }}>
                     {scheduledStartTime
-                      ? `🗓️ Scheduled: Mail 1 will start automatically on ${new Date(scheduledStartTime).toLocaleString()}`
+                      ? `🗓️ Scheduled (IST): Mail 1 will start automatically on ${formatIST(toISTIsoString(scheduledStartTime))}`
                       : "⚡ Leave empty to start immediately today"}
                   </span>
                 </div>
@@ -1026,7 +1056,7 @@ export default function AdminPage() {
               <div style={{ background: "#f8fafc", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13, color: "#475569", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                 <div>Target: <strong>{activeLimit} Leads</strong> {startId && endId ? `(IDs: ${startId} to ${endId})` : ""}</div>
                 <div>Delay: <strong>{activeDelaySec}s</strong> gap</div>
-                <div>Start: <strong>{scheduledStartTime ? new Date(scheduledStartTime).toLocaleString() : "Immediately"}</strong></div>
+                <div>Start: <strong>{scheduledStartTime ? `${formatIST(toISTIsoString(scheduledStartTime))} (IST)` : "Immediately"}</strong></div>
                 <div>Schedule: <strong>M1: Day 0 &bull; M2: +{followup1Days || 3}d &bull; M3: +{followup2Days || 7}d</strong></div>
                 <div>Est. Time: <strong style={{ color: "#2563eb" }}>~{estimatedTimeText()}</strong></div>
               </div>
@@ -1050,7 +1080,7 @@ export default function AdminPage() {
                 {sendingBatch
                   ? `⏳ Processing Campaign (${activeLimit} leads, please wait)...`
                   : scheduledStartTime
-                  ? `🗓️ Schedule Campaign Batch for ${new Date(scheduledStartTime).toLocaleDateString()} (${activeLimit} Leads)`
+                  ? `🗓️ Schedule Campaign Batch for ${formatIST(toISTIsoString(scheduledStartTime))} (${activeLimit} Leads)`
                   : `🚀 Launch Campaign Batch Now (${activeLimit} Leads)`}
               </button>
 
@@ -1196,10 +1226,10 @@ export default function AdminPage() {
                         <tr key={c.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
                           <td style={{ padding: "12px 12px" }}>
                             <div style={{ fontWeight: 700, color: "#0f172a" }}>{c.name || `Campaign #${c.id}`}</div>
-                            <div style={{ fontSize: 11, color: "#94a3b8" }}>{new Date(c.created_at || c.start_time || c.createdAt).toLocaleString()}</div>
+                            <div style={{ fontSize: 11, color: "#94a3b8" }}>{formatIST(c.created_at || c.start_time || c.createdAt)}</div>
                             {c.scheduledStartTime && (
                               <div style={{ fontSize: 11, color: "#7c3aed", fontWeight: 600, marginTop: 2 }}>
-                                ⏰ Start: {new Date(c.scheduledStartTime).toLocaleString()}
+                                ⏰ Start: {formatIST(c.scheduledStartTime)} (IST)
                               </div>
                             )}
                           </td>
@@ -2102,7 +2132,7 @@ export default function AdminPage() {
                     📋 Campaign Logs: {viewingCampaignLog.name || `Campaign #${viewingCampaignLog.id}`}
                   </h3>
                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                    Created: {new Date(viewingCampaignLog.created_at || viewingCampaignLog.start_time).toLocaleString()} &bull; Delay: {viewingCampaignLog.gap_seconds || 2}s/lead &bull; M2: +{viewingCampaignLog.followup_1_days || 3}d &bull; M3: +{viewingCampaignLog.followup_2_days || 7}d
+                    Created: {formatIST(viewingCampaignLog.created_at || viewingCampaignLog.start_time)} (IST) &bull; Delay: {viewingCampaignLog.gap_seconds || 2}s/lead &bull; M2: +{viewingCampaignLog.followup_1_days || 3}d &bull; M3: +{viewingCampaignLog.followup_2_days || 7}d
                   </div>
                 </div>
                 <button

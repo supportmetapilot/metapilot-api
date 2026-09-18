@@ -114,11 +114,29 @@ export async function POST(request) {
     const f1Days = parseFloat(followup1Days) >= 0 ? parseFloat(followup1Days) : 3;
     const f2Days = parseFloat(followup2Days) >= 0 ? parseFloat(followup2Days) : 7;
 
-    // Check if campaign is scheduled for a future date/time
+    // Helper to safely parse date in IST (+05:30) if timezone is missing
+    function parseISTDate(dateInput) {
+      if (!dateInput) return null;
+      if (dateInput instanceof Date) return dateInput;
+      const str = String(dateInput).trim();
+      if (str.includes("Z") || /[+-]\d{2}:?\d{2}$/.test(str)) {
+        return new Date(str);
+      }
+      const normalized = str.replace(" ", "T");
+      const [d, t] = normalized.split("T");
+      if (d && t) {
+        const tSec = t.length === 5 ? `${t}:00` : t;
+        return new Date(`${d}T${tSec}+05:30`);
+      }
+      return new Date(str);
+    }
+
+    // Check if campaign is scheduled for a future date/time (evaluated in IST)
+    const parsedScheduledDate = scheduledStartTime ? parseISTDate(scheduledStartTime) : null;
     const isScheduledFuture =
-      Boolean(scheduledStartTime) &&
-      !isNaN(new Date(scheduledStartTime).getTime()) &&
-      new Date(scheduledStartTime).getTime() > Date.now();
+      Boolean(parsedScheduledDate) &&
+      !isNaN(parsedScheduledDate.getTime()) &&
+      parsedScheduledDate.getTime() > Date.now();
 
     // 1. Query matching leads that need Mail 1 (or next in sequence)
     let query = supabase
@@ -215,10 +233,12 @@ export async function POST(request) {
     // 3. Record Campaign in campaigns table
     try {
       await supabase.from("campaigns").insert({
-        campaign_date: new Date().toISOString().split("T")[0],
+        campaign_date: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }),
         leads_limit: leads.length,
         gap_minutes: activeDelay / 60,
-        start_time: isScheduledFuture ? new Date(scheduledStartTime).toTimeString().split(" ")[0] : new Date().toTimeString().split(" ")[0],
+        start_time: isScheduledFuture
+          ? parsedScheduledDate.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false })
+          : new Date().toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false }),
         followup_1_days: f1Days,
         followup_2_days: f2Days,
         status: isScheduledFuture ? "Scheduled" : isFullySent ? "Active" : "Queued",
@@ -241,7 +261,7 @@ export async function POST(request) {
       delaySec: activeDelay,
       followup1Days: f1Days,
       followup2Days: f2Days,
-      scheduledStartTime: isScheduledFuture ? new Date(scheduledStartTime).toISOString() : null,
+      scheduledStartTime: isScheduledFuture ? parsedScheduledDate.toISOString() : null,
       status: campaignStatus,
       lastDispatchedAt: isScheduledFuture ? null : nowTime,
       createdAt: nowTime,
@@ -256,7 +276,12 @@ export async function POST(request) {
     const delayDesc = activeDelay >= 60 ? `${(activeDelay / 60).toFixed(0)} min` : `${activeDelay}s`;
     let message = "";
     if (isScheduledFuture) {
-      message = `✔ Campaign Scheduled! Mail 1 will automatically start on ${new Date(scheduledStartTime).toLocaleString()} (delivery every ${delayDesc}).`;
+      const scheduledIST = parsedScheduledDate.toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      message = `✔ Campaign Scheduled! Mail 1 will automatically start on ${scheduledIST} IST (delivery every ${delayDesc}).`;
     } else if (isQueued) {
       message = `✔ Campaign Launched! 1st lead dispatched immediately. Remaining ${leads.length - sentCount} leads are queued for 24/7 automated delivery every ${delayDesc}.`;
     } else {
