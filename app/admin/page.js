@@ -484,16 +484,25 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.success) {
         const rep = data.report;
-        let msg = "✔ Cloud Queue Processed!";
-        if (rep.mail1Dispatched) {
-          msg += `\n• Mail 1 Dispatched: [ID ${rep.mail1Dispatched.leadId}] ${rep.mail1Dispatched.name} (${rep.mail1Dispatched.email}) — Template ${rep.mail1Dispatched.template}`;
+        let msg = `✔ Cloud Queue Processed! (${rep.executionMs || 0}ms)`;
+        const m1List = rep.mail1Dispatched || [];
+        if (m1List.length > 0) {
+          msg += `\n\n📧 Mail 1 Dispatched: ${m1List.length} lead(s)`;
+          m1List.forEach((d) => {
+            msg += `\n  • [ID ${d.leadId}] ${d.name} (${d.email}) — Tpl ${d.template}`;
+          });
         } else if (rep.waitingNextLead) {
-          msg += `\n• Next Lead in "${rep.waitingNextLead.campaign}" is waiting for its scheduled interval (${rep.waitingNextLead.remainingSec}s remaining of ${rep.waitingNextLead.delaySec}s gap).`;
+          if (rep.waitingNextLead.status === "scheduled") {
+            msg += `\n• Campaign "${rep.waitingNextLead.campaign}" is scheduled for ${rep.waitingNextLead.scheduledStart}`;
+          } else {
+            msg += `\n• Next Lead in "${rep.waitingNextLead.campaign}" waiting: ${rep.waitingNextLead.remainingSec}s remaining of ${rep.waitingNextLead.delaySec}s gap.`;
+          }
         } else {
           msg += "\n• No pending leads currently due in active queue.";
         }
-        if (rep.mail2Dispatched) msg += `\n• Mail 2 Dispatched: [ID ${rep.mail2Dispatched.leadId}]`;
-        if (rep.mail3Dispatched) msg += `\n• Mail 3 Dispatched: [ID ${rep.mail3Dispatched.leadId}]`;
+        if (rep.mail2Dispatched) msg += `\n\n📧 Mail 2 Dispatched: [ID ${rep.mail2Dispatched.leadId}]`;
+        if (rep.mail3Dispatched) msg += `\n📧 Mail 3 Dispatched: [ID ${rep.mail3Dispatched.leadId}]`;
+        msg += `\n\nActive Campaigns: ${rep.activeCampaignsCount}`;
         alert(msg);
         fetchStats();
         fetchLeads();
@@ -1081,9 +1090,9 @@ export default function AdminPage() {
                 </div>
                 {queueReport && (
                   <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: "#047857", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    {queueReport.mail1Dispatched ? (
+                    {(queueReport.mail1Dispatched || []).length > 0 ? (
                       <span style={{ background: "#dcfce7", padding: "2px 8px", borderRadius: 4 }}>
-                        ✅ Just sent: [ID {queueReport.mail1Dispatched.leadId}] {queueReport.mail1Dispatched.name} (Tpl {queueReport.mail1Dispatched.template})
+                        ✅ Just sent {queueReport.mail1Dispatched.length} lead(s) — Last: [ID {queueReport.mail1Dispatched[queueReport.mail1Dispatched.length - 1].leadId}] {queueReport.mail1Dispatched[queueReport.mail1Dispatched.length - 1].name} (Tpl {queueReport.mail1Dispatched[queueReport.mail1Dispatched.length - 1].template}) &bull; {queueReport.executionMs || 0}ms
                       </span>
                     ) : queueReport.waitingNextLead ? (
                       <span style={{ background: "#dcfce7", padding: "2px 8px", borderRadius: 4 }}>

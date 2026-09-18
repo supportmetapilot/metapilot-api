@@ -7,6 +7,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60; // Allow sufficient serverless execution time
 
 const REGISTRY_CONFIG_KEY = "campaigns_registry";
+const MAX_EXECUTION_MS = 50000; // 50s safety margin (Vercel limit = 60s)
+const MAX_LEADS_PER_RUN = 10; // Process up to 10 leads per invocation
 
 async function getCampaignsRegistry() {
   try {
@@ -38,18 +40,49 @@ async function saveCampaignsRegistry(registry) {
 }
 
 /**
- * Core Worker Function
- * Dispatches the next due lead in the active campaign queue, and checks due follow-ups.
+ * Log dispatch activity for debugging
+ */
+async function logDispatch(action, details) {
+  try {
+    const { data: existing } = await supabase
+      .from("app_config")
+      .select("value")
+      .eq("key", "queue_worker_log")
+      .maybeSingle();
+
+    const logs = existing?.value ? (Array.isArray(existing.value) ? existing.value : JSON.parse(existing.value)) : [];
+    logs.unshift({
+      timestamp: new Date().toISOString(),
+      action,
+      ...details,
+    });
+
+    // Keep only last 50 log entries
+    await supabase.from("app_config").upsert({
+      key: "queue_worker_log",
+      value: logs.slice(0, 50),
+      updated_at: new Date().toISOString(),
+    });
+  } catch (_) {}
+}
+
+/**
+ * Core Worker Function — Processes MULTIPLE leads per run
+ * Dispatches due leads in active campaigns, and checks due follow-ups.
+ * Runs within a 50s time budget, processing up to MAX_LEADS_PER_RUN.
  */
 async function processQueue() {
+  const startTime = Date.now();
   const now = new Date();
   const report = {
     timestamp: now.toISOString(),
-    mail1Dispatched: null,
+    mail1Dispatched: [],
     mail2Dispatched: null,
     mail3Dispatched: null,
     activeCampaignsCount: 0,
     waitingNextLead: null,
+    totalProcessed: 0,
+    executionMs: 0,
   };
 
   const registry = await getCampaignsRegistry();
@@ -63,9 +96,14 @@ async function processQueue() {
   report.activeCampaignsCount = activeCampaigns.length;
 
   let registryUpdated = false;
+  let totalDispatched = 0;
 
-  // 1. Process Mail 1 Queue for active campaigns
+  // 1. Process Mail 1 Queue for active campaigns — MULTI-LEAD LOOP
   for (const camp of activeCampaigns) {
+    // Safety: stop if we're running out of time
+    if (Date.now() - startTime > MAX_EXECUTION_MS) break;
+    if (totalDispatched >= MAX_LEADS_PER_RUN) break;
+
     // If campaign is scheduled for a future time, check if scheduled time has arrived
     if (camp.scheduledStartTime) {
       const scheduledMs = new Date(camp.scheduledStartTime).getTime();
@@ -85,43 +123,56 @@ async function processQueue() {
     }
 
     const delaySec = parseFloat(camp.delaySec || camp.gap_seconds || 120);
-    const lastSent = camp.lastDispatchedAt ? new Date(camp.lastDispatchedAt).getTime() : 0;
-    const elapsedSec = (now.getTime() - lastSent) / 1000;
 
-    // Check if the required delay has elapsed
-    if (lastSent > 0 && elapsedSec < delaySec) {
-      const remainingSec = Math.ceil(delaySec - elapsedSec);
-      report.waitingNextLead = {
-        campaign: camp.name || camp.id,
-        remainingSec,
-        delaySec,
-      };
-      continue; // Not yet due for this campaign
-    }
+    // Inner loop: dispatch multiple leads for this campaign
+    while (totalDispatched < MAX_LEADS_PER_RUN) {
+      // Safety: stop if we're running out of time
+      if (Date.now() - startTime > MAX_EXECUTION_MS) break;
 
-    // Query the next pending lead for Mail 1 in this campaign range
-    let query = supabase
-      .from("leads")
-      .select("*")
-      .not("email", "is", null)
-      .is("mail_1_status", null);
+      const currentNow = new Date();
+      const lastSent = camp.lastDispatchedAt ? new Date(camp.lastDispatchedAt).getTime() : 0;
+      const elapsedSec = (currentNow.getTime() - lastSent) / 1000;
 
-    if (camp.startId && camp.endId) {
-      query = query.gte("id", camp.startId).lte("id", camp.endId);
-    } else if (camp.leadIds && camp.leadIds.length > 0) {
-      query = query.in("id", camp.leadIds);
-    }
+      // Check if the required delay has elapsed
+      if (lastSent > 0 && elapsedSec < delaySec) {
+        const remainingSec = Math.ceil(delaySec - elapsedSec);
+        report.waitingNextLead = {
+          campaign: camp.name || camp.id,
+          remainingSec,
+          delaySec,
+        };
+        break; // Not yet due, move to next campaign
+      }
 
-    const { data: pendingLeads, error: queryErr } = await query
-      .order("id", { ascending: true })
-      .limit(1);
+      // Query the next pending lead for Mail 1 in this campaign range
+      let query = supabase
+        .from("leads")
+        .select("*")
+        .not("email", "is", null)
+        .is("mail_1_status", null);
 
-    if (queryErr) {
-      console.error("Queue worker lead query error:", queryErr);
-      continue;
-    }
+      if (camp.startId && camp.endId) {
+        query = query.gte("id", camp.startId).lte("id", camp.endId);
+      } else if (camp.leadIds && camp.leadIds.length > 0) {
+        query = query.in("id", camp.leadIds);
+      }
 
-    if (pendingLeads && pendingLeads.length > 0) {
+      const { data: pendingLeads, error: queryErr } = await query
+        .order("id", { ascending: true })
+        .limit(1);
+
+      if (queryErr) {
+        console.error("Queue worker lead query error:", queryErr);
+        break;
+      }
+
+      if (!pendingLeads || pendingLeads.length === 0) {
+        // All Mail 1 leads completed for this campaign
+        camp.status = "completed_m1";
+        registryUpdated = true;
+        break;
+      }
+
       const lead = pendingLeads[0];
       const templates = ["A", "B", "C"];
       const currentSentCount = (camp.results || []).length;
@@ -159,14 +210,15 @@ async function processQueue() {
         camp.lastDispatchedAt = sentTime;
         camp.processedCount = (camp.processedCount || 0) + 1;
         registryUpdated = true;
+        totalDispatched++;
 
-        report.mail1Dispatched = {
+        report.mail1Dispatched.push({
           campaign: camp.name || camp.id,
           leadId: lead.id,
           name: lead.full_name,
           email: lead.email,
           template: templateCode,
-        };
+        });
 
         // Mirror to campaigns table if ID matches
         try {
@@ -182,8 +234,15 @@ async function processQueue() {
           }
         } catch (_) {}
 
-        // Dispatched 1 lead for this run, exit loop to maintain steady human pace
-        break;
+        // Wait for the campaign's configured delay before processing the next lead
+        // But only wait if we have more leads to process and time budget remaining
+        if (delaySec > 0 && delaySec <= 10) {
+          // Only wait for short delays (≤10s) — longer delays we skip and process next cron cycle
+          await new Promise((r) => setTimeout(r, delaySec * 1000));
+        } else if (delaySec > 10) {
+          // For longer delays, we stop and let the next cron invocation handle it
+          break;
+        }
       } catch (sendErr) {
         console.error("Queue worker send error:", sendErr);
         await supabase
@@ -195,15 +254,12 @@ async function processQueue() {
           .eq("id", lead.id);
         break;
       }
-    } else {
-      // All Mail 1 leads completed for this campaign
-      camp.status = "completed_m1";
-      registryUpdated = true;
     }
   }
 
   // 2. Check due follow-ups (Mail 2 & Mail 3) for active campaigns
   for (const camp of registry) {
+    if (Date.now() - startTime > MAX_EXECUTION_MS) break;
     if (report.mail2Dispatched && report.mail3Dispatched) break;
 
     const f1Days = parseFloat(camp.followup1Days) >= 0 ? parseFloat(camp.followup1Days) : 3;
@@ -316,20 +372,39 @@ async function processQueue() {
     await saveCampaignsRegistry(registry);
   }
 
+  report.totalProcessed = totalDispatched;
+  report.executionMs = Date.now() - startTime;
+
+  // Log dispatch activity
+  await logDispatch("queue_run", {
+    leadsDispatched: totalDispatched,
+    activeCampaigns: report.activeCampaignsCount,
+    executionMs: report.executionMs,
+    mail2: report.mail2Dispatched ? true : false,
+    mail3: report.mail3Dispatched ? true : false,
+  });
+
   return report;
+}
+
+/**
+ * Auth helper — supports Vercel Cron Bearer token, query key, and body key
+ */
+function isAuthorized(request, key) {
+  const authHeader = request.headers.get("authorization");
+  // Vercel Cron sends: Authorization: Bearer <CRON_SECRET>
+  if (authHeader === `Bearer ${process.env.CRON_SECRET}`) return true;
+  // Query param or body key
+  if (key === "metapilot2026") return true;
+  if (key === process.env.CRON_SECRET) return true;
+  return false;
 }
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const key = searchParams.get("key");
-  const authHeader = request.headers.get("authorization");
 
-  const isAuthorized =
-    authHeader === `Bearer ${process.env.CRON_SECRET}` ||
-    key === "metapilot2026" ||
-    key === process.env.CRON_SECRET;
-
-  if (!isAuthorized) {
+  if (!isAuthorized(request, key)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -337,6 +412,7 @@ export async function GET(request) {
     const report = await processQueue();
     return NextResponse.json({ success: true, report });
   } catch (err) {
+    console.error("Queue worker GET error:", err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
@@ -347,20 +423,15 @@ export async function POST(request) {
     const queryKey = searchParams.get("key");
     const body = await request.json().catch(() => ({}));
     const key = body.key || queryKey;
-    const authHeader = request.headers.get("authorization");
 
-    const isAuthorized =
-      authHeader === `Bearer ${process.env.CRON_SECRET}` ||
-      key === "metapilot2026" ||
-      key === process.env.CRON_SECRET;
-
-    if (!isAuthorized) {
+    if (!isAuthorized(request, key)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const report = await processQueue();
     return NextResponse.json({ success: true, report });
   } catch (err) {
+    console.error("Queue worker POST error:", err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
